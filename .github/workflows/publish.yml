@@ -83,13 +83,11 @@ jobs:
           python scripts/make_video.py --loop loop.wav \
             --duration-hours "${{ steps.fields.outputs.hours }}" --out final.mp4
 
-      - name: Generate thumbnail
+      - name: Select thumbnail (rotate pre-made pool)
         if: steps.row.outputs.has_row == 'true'
         run: |
-          python scripts/generate_thumbnail.py \
-            --title "${{ steps.fields.outputs.title }}" \
-            --duration "${{ steps.fields.outputs.hours }} Hours" \
-            --out thumbnail.png
+          python scripts/select_thumbnail.py \
+            --index "${{ steps.fields.outputs.row_number }}" --out thumbnail.png
 
       - name: Upload to YouTube
         if: steps.row.outputs.has_row == 'true'

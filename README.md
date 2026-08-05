@@ -11,7 +11,7 @@ Google Sheet (content queue: title, key, tempo, duration, status)
 GitHub Actions (cron trigger, public repo = free unmetered minutes)
         ├─ scripts/generate_music.py      numpy sine-pad loop, crossfaded seam
         ├─ scripts/make_video.py          ffmpeg: black frame + -stream_loop audio → mp4
-        ├─ scripts/generate_thumbnail.py  Pillow: text over a rotating background pool
+        ├─ scripts/select_thumbnail.py    rotate through the pre-made branded pool
         └─ scripts/upload_youtube.py      YouTube Data API v3 upload + thumbnail
         │
         ▼
@@ -30,13 +30,14 @@ Secrets) — **follow [PLAN.md](PLAN.md) step by step.**
 | `.github/workflows/publish.yml` | Cron + manual pipeline: reads a pending row, renders, uploads, marks done |
 | `scripts/generate_music.py` | Synthesize a short seamless ambient loop (vary `--key`/`--tempo`/`--seed`) |
 | `scripts/make_video.py` | ffmpeg-merge the loop with a black frame to full length |
-| `scripts/generate_thumbnail.py` | Pillow thumbnail from title/duration + a background image |
+| `scripts/select_thumbnail.py` | Rotate through the pre-made branded thumbnails in `assets/thumbnails/` |
+| `scripts/generate_thumbnail.py` | Alternate approach (unused by default): draw dynamic title text over a background |
 | `scripts/upload_youtube.py` | Upload via YouTube Data API v3 using a refresh token |
 | `scripts/get_refresh_token.py` | **Run locally once** to mint the long-lived refresh token |
 | `scripts/read_sheet.py` | Read next `pending` row / write status + video_id back |
 | `content_queue_template.csv` | The columns your Google Sheet must have |
 | `docs/privacy-policy.md` | Host via GitHub Pages for OAuth "Production" publishing |
-| `assets/` | Drop 5–10 calming background images here for thumbnail rotation |
+| `assets/thumbnails/` | The 9 branded "Meditated Sleeping" thumbnails (1280×720) the pipeline rotates through |
 
 ## Local development
 

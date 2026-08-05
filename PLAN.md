@@ -94,5 +94,6 @@ In the repo: **Settings → Secrets and variables → Actions → New repository
 - No custom domain (GitHub Pages `github.io` domain is enough for the privacy policy).
 - No Zapier in the critical path (cron + Sheets replaces it); Zapier only optional for a
   publish notification.
-- No AI image generation for thumbnails — a small rotating pool of background images in
-  `assets/` is the intended approach.
+- No per-video AI thumbnail generation — the pipeline rotates a fixed pool of 9 pre-made
+  branded thumbnails in `assets/thumbnails/` (`scripts/select_thumbnail.py`, indexed by
+  Sheet row so it cycles evenly). Add more images to the folder to widen the rotation.
