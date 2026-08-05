@@ -1,0 +1,9 @@
+# Python dependencies for the black-screen YouTube automation pipeline.
+# ffmpeg is a separate system package (installed via apt in the workflow), not a pip dep.
+numpy>=1.26
+soundfile>=0.12
+pillow>=10.2
+gspread>=6.0
+google-auth>=2.28
+google-auth-oauthlib>=1.2
+google-api-python-client>=2.120

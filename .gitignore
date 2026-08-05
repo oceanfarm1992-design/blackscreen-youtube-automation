@@ -1,0 +1,29 @@
+# --- Secrets: NEVER commit these (they belong in GitHub Secrets) ---
+client_secret*.json
+sa.json
+service_account*.json
+*credentials*.json
+token.json
+.env
+
+# --- Generated render artifacts ---
+loop.wav
+final.mp4
+thumbnail.png
+row.json
+upload.log
+*.mp4
+*.wav
+
+# --- Python ---
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+
+# --- Local Claude Code settings (machine-specific) ---
+.claude/

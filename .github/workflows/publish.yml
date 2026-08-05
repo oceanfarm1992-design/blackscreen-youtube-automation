@@ -1,0 +1,116 @@
+name: publish-video
+
+# Renders one ambient black-screen video and uploads it to YouTube.
+# Runs on a PUBLIC repo so standard-runner minutes are free and unmetered.
+#
+# Required repo Secrets (Settings -> Secrets and variables -> Actions):
+#   GOOGLE_SERVICE_ACCOUNT_JSON  - full contents of the Sheets service-account key JSON
+#   SHEET_ID                     - the Google Sheet ID for the content queue
+#   YT_CLIENT_ID                 - from the one-time OAuth setup
+#   YT_CLIENT_SECRET             - from the one-time OAuth setup
+#   YT_REFRESH_TOKEN             - long-lived token (app must be in "Production", not "Testing")
+
+on:
+  schedule:
+    - cron: "0 6 * * *"    # daily at 06:00 UTC; add more cron lines for multiple runs/day
+  workflow_dispatch: {}     # manual trigger from the Actions tab
+
+# Never allow more than one publish job at a time (avoids double-uploading a row).
+concurrency:
+  group: publish-video
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Write service-account key to file
+        run: printf '%s' '${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}' > sa.json
+
+      - name: Read next pending row
+        id: row
+        run: |
+          python scripts/read_sheet.py --sheet-id "${{ secrets.SHEET_ID }}" \
+            --creds sa.json --next-pending > row.json
+          cat row.json
+          if [ "$(cat row.json)" = "null" ]; then
+            echo "No pending rows in the queue. Nothing to publish."
+            echo "has_row=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_row=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Parse row fields
+        if: steps.row.outputs.has_row == 'true'
+        id: fields
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          r = json.load(open("row.json"))
+          def g(k, d): return str(r.get(k) or d)
+          print(f"row_number={r['_row_number']}")
+          print(f"title={g('title','Deep Sleep Music')}")
+          print(f"style={g('style','ambient')}")
+          print(f"key={g('key','C')}")
+          print(f"tempo={g('tempo_bpm','60')}")
+          print(f"hours={g('duration_hours','8')}")
+          PY
+
+      - name: Generate music
+        if: steps.row.outputs.has_row == 'true'
+        run: |
+          python scripts/generate_music.py \
+            --key "${{ steps.fields.outputs.key }}" \
+            --tempo "${{ steps.fields.outputs.tempo }}" \
+            --loop-minutes 4 --seed "$RANDOM" --out loop.wav
+
+      - name: Build video
+        if: steps.row.outputs.has_row == 'true'
+        run: |
+          python scripts/make_video.py --loop loop.wav \
+            --duration-hours "${{ steps.fields.outputs.hours }}" --out final.mp4
+
+      - name: Generate thumbnail
+        if: steps.row.outputs.has_row == 'true'
+        run: |
+          python scripts/generate_thumbnail.py \
+            --title "${{ steps.fields.outputs.title }}" \
+            --duration "${{ steps.fields.outputs.hours }} Hours" \
+            --out thumbnail.png
+
+      - name: Upload to YouTube
+        if: steps.row.outputs.has_row == 'true'
+        id: upload
+        env:
+          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+        run: |
+          python scripts/upload_youtube.py --video final.mp4 --thumbnail thumbnail.png \
+            --title "${{ steps.fields.outputs.title }} - ${{ steps.fields.outputs.hours }} Hours Black Screen" \
+            --description "Ambient calm music for sleep, study and focus." \
+            --tags "sleep,ambient,calm,black screen,study,focus" \
+            | tee upload.log
+          VID=$(grep -oP 'Uploaded video ID: \K.*' upload.log)
+          echo "video_id=$VID" >> "$GITHUB_OUTPUT"
+
+      - name: Mark row done
+        if: steps.row.outputs.has_row == 'true'
+        run: |
+          python scripts/read_sheet.py --sheet-id "${{ secrets.SHEET_ID }}" \
+            --creds sa.json \
+            --set-status "${{ steps.fields.outputs.row_number }}" done \
+            --video-id "${{ steps.upload.outputs.video_id }}"
