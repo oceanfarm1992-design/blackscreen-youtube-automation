@@ -16,6 +16,9 @@ on:
     - cron: "0 6 * * *"    # daily at 06:00 UTC
   workflow_dispatch:
     inputs:
+      format:
+        description: "Format: both | short | long"
+        default: "both"
       hours:
         description: "Long-form length in hours (8-12)"
         default: "10"
@@ -46,9 +49,11 @@ jobs:
           pip install -r requirements.txt
           sudo apt-get update && sudo apt-get install -y ffmpeg
 
-      - name: Produce both videos (today's theme) + QC
+      - name: Produce video(s) (today's theme) + QC
         run: |
-          python scripts/produce.py --format both --hours "${{ github.event.inputs.hours || 10 }}" --out-dir out
+          python scripts/produce.py \
+            --format "${{ github.event.inputs.format || 'both' }}" \
+            --hours "${{ github.event.inputs.hours || 10 }}" --out-dir out
 
       - name: Show queue manifests
         run: |
