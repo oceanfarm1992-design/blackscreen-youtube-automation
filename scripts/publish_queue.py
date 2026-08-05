@@ -53,7 +53,15 @@ def main():
             youtube, video, meta["title"], meta["description"], meta.get("tags", []),
             category_id=meta.get("categoryId", "10"), privacy=args.privacy,
         )
-        U.set_thumbnail(youtube, video_id, thumb)
+        # Custom thumbnails require a verified channel (youtube.com/verify). If that's
+        # not enabled the API returns 403 — don't fail the run over an optional extra;
+        # the branded video frame already serves as the auto-thumbnail.
+        try:
+            U.set_thumbnail(youtube, video_id, thumb)
+            man["thumbnail_status"] = "set"
+        except Exception as e:
+            man["thumbnail_status"] = "skipped"
+            print(f"  ! custom thumbnail not set (needs a verified channel): {e}")
 
         man["video_id"] = video_id
         man["status"] = "uploaded_private" if args.privacy == "private" else f"uploaded_{args.privacy}"
