@@ -1,60 +1,80 @@
-# Black-Screen YouTube Automation
+# Meditated Sleeping — Automated Video Production
 
-A fully automated pipeline for a low-effort, high-volume ambient/calm-music YouTube
-channel: Python-generated music → black-screen video → thumbnail → scheduled YouTube
-upload, orchestrated by **GitHub Actions** and driven by a **Google Sheets** content queue.
+*Calm. Sleep. Restore.*
+
+An autonomous pipeline that produces **two videos per day** for the "Meditated Sleeping"
+YouTube channel and queues them for publishing:
+
+- **Short** — exactly **59 seconds**, vertical **1080×1920**, for reach/discovery.
+- **Long-form** — **8–12 hours**, **1920×1080**, for deep sleep and background ambience.
+
+Both use the same immersive **`#0D0D0D`** branded frame (glowing headphone icon +
+"Meditated Sleeping / Calm. Sleep. Restore."). Everything runs on GitHub's Ubuntu
+runners; no machine of yours needs to stay on.
+
+## Daily theme rotation
+
+One theme per day, cycling in order (date-driven, no state file needed):
+
+| Day | Theme | Sound design |
+|----|----|----|
+| 1 | **Rainy with Calm Music** | gentle rainfall + distant thunder + soft ambient pads |
+| 2 | **Waterfall Music** | steady flowing water + low rumble + gentle harmony |
+| 3 | **Natural Green Forest** | soft wind + random water drops + bird chirps + pad |
+| 4 | **Sleeping Music** | deep drone + slow evolving chords + subtle delta-rate tremolo |
+
+Anchor date `2026-08-05` = Rain (see `scripts/themes.py`).
+
+## How a day runs
 
 ```
-Google Sheet (content queue: title, key, tempo, duration, status)
-        │
-        ▼
-GitHub Actions (cron trigger, public repo = free unmetered minutes)
-        ├─ scripts/generate_music.py      numpy sine-pad loop, crossfaded seam
-        ├─ scripts/make_video.py          ffmpeg: black frame + -stream_loop audio → mp4
-        ├─ scripts/select_thumbnail.py    rotate through the pre-made branded pool
-        └─ scripts/upload_youtube.py      YouTube Data API v3 upload + thumbnail
-        │
-        ▼
-Sheet row flipped to "done", video_id written back
+scripts/produce.py --format both
+   │  pick today's theme (themes.py)
+   ├─ generate_theme_audio.py   numpy synthesis (Short = 59s; long = seamless loop)
+   ├─ make_video.py             ffmpeg: branded #0D0D0D still + audio → mp4
+   ├─ assets/branding/…         assign the 1280×720 #0D0D0D thumbnail
+   ├─ make_metadata.py          SEO title / description / tags per theme & format
+   └─ QC                        assert 59s / 8–12h and correct resolution
+        → writes *_manifest.json, status "queued"
+
+.github/workflows/publish.yml (daily cron)
+   → runs produce.py, then (only if YT secrets are set) uploads both as PRIVATE
 ```
 
-## Status
-
-Code is ready. Going live requires one-time account setup (Google Cloud, OAuth, GitHub
-Secrets) — **follow [PLAN.md](PLAN.md) step by step.**
+Audio is **synthesized from numpy every run** (no samples), so each upload is original;
+the seed defaults to the date, and varies per format, so consecutive videos differ.
 
 ## Repo layout
 
 | Path | Purpose |
 |---|---|
-| `.github/workflows/publish.yml` | Cron + manual pipeline: reads a pending row, renders, uploads, marks done |
-| `scripts/generate_music.py` | Synthesize a short seamless ambient loop (vary `--key`/`--tempo`/`--seed`) |
-| `scripts/make_video.py` | ffmpeg-merge the loop with a black frame to full length |
-| `scripts/select_thumbnail.py` | Rotate through the pre-made branded thumbnails in `assets/thumbnails/` |
-| `scripts/generate_thumbnail.py` | Alternate approach (unused by default): draw dynamic title text over a background |
-| `scripts/upload_youtube.py` | Upload via YouTube Data API v3 using a refresh token |
-| `scripts/get_refresh_token.py` | **Run locally once** to mint the long-lived refresh token |
-| `scripts/read_sheet.py` | Read next `pending` row / write status + video_id back |
-| `content_queue_template.csv` | The columns your Google Sheet must have |
-| `docs/privacy-policy.md` | Host via GitHub Pages for OAuth "Production" publishing |
-| `assets/thumbnails/` | The 9 branded "Meditated Sleeping" thumbnails (1280×720) the pipeline rotates through |
+| `scripts/themes.py` | 4 themes: synth params, SEO metadata, date-based rotation |
+| `scripts/generate_theme_audio.py` | Synthesize rain / waterfall / forest / sleeping audio |
+| `scripts/make_video.py` | ffmpeg-merge audio with the branded still frame |
+| `scripts/make_metadata.py` | Emit SEO title/description/tags JSON per theme & format |
+| `scripts/produce.py` | Orchestrator: audio → video → thumbnail → metadata → QC → manifest |
+| `scripts/publish_queue.py` | Upload produced assets to YouTube as **private** (queued) |
+| `scripts/upload_youtube.py` | YouTube Data API v3 upload helper |
+| `scripts/get_refresh_token.py` | **Run locally once** to mint the OAuth refresh token |
+| `assets/branding/` | The `#0D0D0D` brand frames: 16:9, 9:16, and 1280×720 thumbnail |
+| `assets/thumbnails/` | The original 9 scenic thumbnails — **unused** alternate set (kept for reference) |
+| `.github/workflows/publish.yml` | Daily produce-and-queue workflow |
 
-## Local development
+## Run it locally
 
-The pipeline is designed to run on GitHub's Ubuntu runners — **you don't need Python
-locally** except for the one-time `get_refresh_token.py` step. To run scripts locally
-anyway:
+Needs Python 3.11+ and ffmpeg on PATH.
 
 ```bash
-pip install -r requirements.txt   # plus system ffmpeg on PATH
-python scripts/generate_music.py --key C --tempo 60 --loop-minutes 4 --out loop.wav
-python scripts/make_video.py --loop loop.wav --duration-hours 8 --out final.mp4
+pip install -r requirements.txt
+python scripts/produce.py --format short                 # today's theme, 59s Short
+python scripts/produce.py --theme forest --format long --hours 10   # a 10h long-form
 ```
 
-## Guardrails
+Outputs land in `out/` (git-ignored) with a `*_manifest.json` QC report per asset.
 
-- **Quota:** ~6 uploads/day max on the default 10k-unit/day YouTube API quota.
-- **Content policy:** vary music parameters and metadata per video; never reuse audio.
-- **Secrets:** live only in GitHub Secrets — never commit them (`.gitignore` enforces this).
+## Publishing
 
-See [PLAN.md](PLAN.md) for the full rollout and the failure modes to watch for.
+The daily workflow **never publishes public automatically.** If the three `YT_*`
+secrets are set it uploads both videos as **private** (queued on the channel); you
+review and flip them to public yourself. See [PLAN.md](PLAN.md) for the one-time
+OAuth setup and the guardrails (API quota, content-policy, token expiry).

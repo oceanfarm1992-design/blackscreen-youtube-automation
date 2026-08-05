@@ -1,99 +1,86 @@
-# Rollout Plan — Black-Screen YouTube Automation
+# Rollout Plan — Meditated Sleeping Production Pipeline
 
-This is the end-to-end plan to get the pipeline live. The **code** in this repo is done;
-the remaining work is **account/config setup** that can't be scripted from here (it needs
-your Google account, browser logins, and secrets). Do the steps in order.
+The **code is done and verified**: the daily workflow produces both videos (59s Short +
+8–12h long-form), brands them `#0D0D0D`, writes SEO metadata, and QCs durations. What
+remains is optional account setup so the queued videos can be uploaded to your channel.
 
-Legend: 🤖 = automated by this repo · 🙋 = you do it manually (one-time)
+Legend: 🤖 = automated · 🙋 = you do it once
 
 ---
 
-## Phase 0 — Repo (done)
+## Phase 0 — Production pipeline (done & verified 🤖)
 
-- 🤖 Scripts, GitHub Actions workflow, requirements, docs, and templates are committed.
-- 🤖 `.gitignore` guarantees no secret or render artifact is ever committed.
+- Theme rotation, 4 theme audio synths, `#0D0D0D` branded frames, metadata, QC, manifest.
+- Verified locally: today's Short renders at **1080×1920, 59.0s**; the long-form render
+  path renders at **1920×1080** with exact duration. All four themes synthesize cleanly.
+- The daily GitHub Actions workflow runs on cron with **no secrets required** — without
+  them it produces the assets and saves metadata as run artifacts.
 
-## Phase 1 — Google Sheet content queue  🙋
+## Phase 1 — Turn on automatic queuing (optional)  🙋
 
-1. Create a Google Sheet. Give the first tab the header row from
-   [`content_queue_template.csv`](content_queue_template.csv):
-   `title, style, key, tempo_bpm, duration_hours, status, video_id, scheduled_date`
-2. Add a few rows with `status = pending`. Vary `key`/`tempo_bpm` per row (policy — see
-   guardrails below).
-3. Copy the **Sheet ID** from its URL (`docs.google.com/spreadsheets/d/<SHEET_ID>/edit`).
+Only needed if you want the workflow to upload each day's videos to the channel as
+**private drafts** (instead of just producing the files). This is the fragile part.
 
-## Phase 2 — Google service account (Sheets access)  🙋
-
-1. In [Google Cloud Console](https://console.cloud.google.com) create/pick a project.
-2. Enable the **Google Sheets API**.
-3. Create a **Service Account**, then create a **JSON key** for it and download it.
-4. **Share the Sheet** with the service account's email (`...@...iam.gserviceaccount.com`)
-   as an **Editor** — otherwise it can't read/write the queue.
-
-## Phase 3 — YouTube OAuth (the fragile part)  🙋
-
-Read [`references/youtube_oauth.md`](references/youtube_oauth.md) carefully — this is the
-step most likely to break. See also [`references/troubleshooting.md`](references/troubleshooting.md).
-
-1. Same Cloud project: enable **YouTube Data API v3**.
+1. [Google Cloud Console](https://console.cloud.google.com): create/pick a project,
+   enable **YouTube Data API v3**.
 2. Create **OAuth 2.0 credentials → Desktop app**; download the client-secret JSON.
-3. Configure the **OAuth consent screen** (External), add the `youtube.upload` scope, and
+3. Configure the **OAuth consent screen** (External), add the `youtube.upload` scope,
    add yourself as a test user.
-4. **Publish the app to Production.** Tokens issued while the app is in *Testing* expire
-   after **7 days** and the upload will silently start failing. Publishing a *sensitive*
-   scope (which `youtube.upload` is) does **not** need Google's full review for a personal
-   tool — you'll click through a warning. The usual blocker is a **privacy-policy URL**:
-   host [`docs/privacy-policy.md`](docs/privacy-policy.md) for free via **GitHub Pages**
-   (Settings → Pages → deploy from `main` `/docs`) and use that URL.
-5. Get the long-lived refresh token by running **locally**, once:
+4. **Publish the app to Production.** Tokens minted while the app is in *Testing* expire
+   after **7 days** and uploads then fail silently. Sensitive scopes like `youtube.upload`
+   don't need Google's full review for a personal tool — click through the warning. The
+   usual blocker is a **privacy-policy URL**: host [`docs/privacy-policy.md`](docs/privacy-policy.md)
+   free via **GitHub Pages** (Settings → Pages → deploy from `main` `/docs`).
+   Full detail: [`references/youtube_oauth.md`](references/youtube_oauth.md).
+5. Mint the long-lived refresh token **locally, once**:
    ```bash
    pip install google-auth-oauthlib
    python scripts/get_refresh_token.py --client-secret client_secret.json
    ```
-   > ⚠️ Python isn't currently on this machine's PATH. Install Python 3.11+ first, or run
-   > this step in Google Colab. It opens a browser login and prints the three `YT_*` values.
-6. Re-run step 5 **after** publishing to Production — tokens minted under Testing do not
-   retroactively become long-lived.
+   Re-run this **after** publishing to Production (Testing-era tokens don't become
+   long-lived retroactively).
 
-## Phase 4 — GitHub Secrets  🙋
+## Phase 2 — GitHub Secrets  🙋
 
-In the repo: **Settings → Secrets and variables → Actions → New repository secret**. Add:
+Repo → **Settings → Secrets and variables → Actions**. Add the three values printed by
+`get_refresh_token.py`:
 
 | Secret | Value |
 |---|---|
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | full contents of the Phase-2 JSON key |
-| `SHEET_ID` | the Phase-1 Sheet ID |
-| `YT_CLIENT_ID` | from `get_refresh_token.py` output |
-| `YT_CLIENT_SECRET` | from `get_refresh_token.py` output |
-| `YT_REFRESH_TOKEN` | from `get_refresh_token.py` output |
+| `YT_CLIENT_ID` | from the OAuth client |
+| `YT_CLIENT_SECRET` | from the OAuth client |
+| `YT_REFRESH_TOKEN` | the minted long-lived token |
 
-## Phase 5 — First run & verify  🙋🤖
+Once these exist, the daily run uploads both videos as **private**. No Google Sheet or
+service account is needed — the theme is chosen by the date.
 
-1. **Actions** tab → **publish-video** → **Run workflow** (manual `workflow_dispatch`).
-2. Watch the log. Success = a new (public) video on your channel and that Sheet row flipped
-   to `done` with its `video_id` filled in.
-3. Start conservative — **upload as `unlisted` first** by editing the `--privacy` flag in
-   the workflow, confirm quality, then switch to `public`.
-4. Once verified, the daily **cron** (`0 6 * * *` UTC) takes over. Add more `cron:` lines
-   for multiple runs/day.
+## Phase 3 — First run & verify  🙋🤖
+
+1. **Actions** tab → **daily-produce** → **Run workflow** (set hours 8–12 if you like).
+2. Watch the log: it produces the Short + long-form, prints the QC manifests, and (if
+   secrets are set) uploads both as private.
+3. Review the two private videos on your channel, then flip to **public** when happy.
+4. The daily **cron** (`0 6 * * *` UTC) then runs on its own.
 
 ---
 
-## Guardrails to respect (these decide whether the channel survives)
+## Guardrails (these decide whether the channel survives)
 
-- **API quota:** 10,000 units/day, ~1,600 per upload → **~6 uploads/day max** on default
-  quota. Keep cron frequency under that.
+- **API quota:** 10,000 units/day; ~1,600 per upload → **~6 uploads/day max**. Two
+  videos/day is well within it.
 - **Reused/inauthentic-content policy:** YouTube demonetizes/suspends channels posting
-  near-identical high-volume content. **Vary key/tempo/instrumentation per row** and give
-  each video a distinct title/thumbnail. Never reuse the same audio file.
+  near-identical high-volume content. Audio is re-synthesized each run with a date-based
+  seed so no two uploads share a file; titles/descriptions vary by theme. Don't crank the
+  cron to many-per-day with the same theme.
 - **7-day token expiry:** if uploads start failing ~a week after setup, the OAuth app
-  slipped back to Testing status — re-publish to Production and re-mint the token.
+  slipped back to Testing — re-publish to Production and re-mint the token.
+- **Long renders:** an 8–12h file is ~1 GB+ and uploads slowly; the workflow allows 120
+  minutes. Keep to one long-form per run.
 
-## Out of scope (intentionally not built)
+## Notes on the pivot from the earlier version
 
-- No custom domain (GitHub Pages `github.io` domain is enough for the privacy policy).
-- No Zapier in the critical path (cron + Sheets replaces it); Zapier only optional for a
-  publish notification.
-- No per-video AI thumbnail generation — the pipeline rotates a fixed pool of 9 pre-made
-  branded thumbnails in `assets/thumbnails/` (`scripts/select_thumbnail.py`, indexed by
-  Sheet row so it cycles evenly). Add more images to the folder to widen the rotation.
+- The **Google Sheets queue** and its service account are **removed** — the theme now
+  rotates by date, so there's nothing to hand-edit. (Recoverable from git history if ever
+  wanted.)
+- Thumbnails are now the single **`#0D0D0D` brand** per spec (zero distractions). The 9
+  scenic thumbnails from before are kept in `assets/thumbnails/` but are **not used**.

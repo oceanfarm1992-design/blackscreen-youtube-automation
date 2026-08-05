@@ -64,18 +64,38 @@ def set_thumbnail(youtube, video_id, thumbnail_path):
 
 
 def main():
+    import json
+
     p = argparse.ArgumentParser()
     p.add_argument("--video", required=True)
     p.add_argument("--thumbnail", default=None)
-    p.add_argument("--title", required=True)
+    p.add_argument("--metadata", default=None,
+                   help="JSON from make_metadata.py; overrides --title/--description/--tags")
+    p.add_argument("--title", default=None)
     p.add_argument("--description", default="")
     p.add_argument("--tags", default="", help="comma-separated")
-    p.add_argument("--privacy", default="public", choices=["public", "unlisted", "private"])
+    p.add_argument("--privacy", default=None, choices=["public", "unlisted", "private"])
     args = p.parse_args()
 
+    if args.metadata:
+        meta = json.load(open(args.metadata, encoding="utf-8"))
+        title = meta["title"]
+        description = meta["description"]
+        tags = meta.get("tags", [])
+        category = meta.get("categoryId", "10")
+        privacy = args.privacy or meta.get("privacyStatus", "private")
+    else:
+        if not args.title:
+            p.error("--title is required when --metadata is not given")
+        title = args.title
+        description = args.description
+        tags = [t.strip() for t in args.tags.split(",") if t.strip()]
+        category = "10"
+        privacy = args.privacy or "public"
+
     youtube = get_service()
-    tags = [t.strip() for t in args.tags.split(",") if t.strip()]
-    video_id = upload_video(youtube, args.video, args.title, args.description, tags, privacy=args.privacy)
+    video_id = upload_video(youtube, args.video, title, description, tags,
+                            category_id=category, privacy=privacy)
     print(f"Uploaded video ID: {video_id}")
 
     if args.thumbnail:

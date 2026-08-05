@@ -1,29 +1,38 @@
-name: publish-video
+name: daily-produce
 
-# Renders one ambient black-screen video and uploads it to YouTube.
+# Produces the day's two videos for "Meditated Sleeping" and queues them:
+#   - one 59s Short  (vertical 1080x1920, #0D0D0D branded)
+#   - one 8-12h long-form (1920x1080, #0D0D0D branded)
+# Theme rotates daily (rain -> waterfall -> forest -> sleeping) based on the date.
 # Runs on a PUBLIC repo so standard-runner minutes are free and unmetered.
 #
-# Required repo Secrets (Settings -> Secrets and variables -> Actions):
-#   GOOGLE_SERVICE_ACCOUNT_JSON  - full contents of the Sheets service-account key JSON
-#   SHEET_ID                     - the Google Sheet ID for the content queue
-#   YT_CLIENT_ID                 - from the one-time OAuth setup
-#   YT_CLIENT_SECRET             - from the one-time OAuth setup
-#   YT_REFRESH_TOKEN             - long-lived token (app must be in "Production", not "Testing")
+# Optional repo Secrets (Settings -> Secrets and variables -> Actions). If present,
+# both videos are uploaded to the channel as PRIVATE (queued) — nothing goes public
+# automatically. Without them, the assets are produced and saved as run artifacts.
+#   YT_CLIENT_ID, YT_CLIENT_SECRET, YT_REFRESH_TOKEN  - from the one-time OAuth setup
 
 on:
   schedule:
-    - cron: "0 6 * * *"    # daily at 06:00 UTC; add more cron lines for multiple runs/day
-  workflow_dispatch: {}     # manual trigger from the Actions tab
+    - cron: "0 6 * * *"    # daily at 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: "Long-form length in hours (8-12)"
+        default: "10"
 
-# Never allow more than one publish job at a time (avoids double-uploading a row).
+# One production run at a time so a slow long-form render can't overlap the next day.
 concurrency:
-  group: publish-video
+  group: daily-produce
   cancel-in-progress: false
 
 jobs:
-  publish:
+  produce:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
+    env:
+      YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+      YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+      YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -37,78 +46,25 @@ jobs:
           pip install -r requirements.txt
           sudo apt-get update && sudo apt-get install -y ffmpeg
 
-      - name: Write service-account key to file
-        run: printf '%s' '${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}' > sa.json
-
-      - name: Read next pending row
-        id: row
+      - name: Produce both videos (today's theme) + QC
         run: |
-          python scripts/read_sheet.py --sheet-id "${{ secrets.SHEET_ID }}" \
-            --creds sa.json --next-pending > row.json
-          cat row.json
-          if [ "$(cat row.json)" = "null" ]; then
-            echo "No pending rows in the queue. Nothing to publish."
-            echo "has_row=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_row=true" >> "$GITHUB_OUTPUT"
-          fi
+          python scripts/produce.py --format both --hours "${{ github.event.inputs.hours || 10 }}" --out-dir out
 
-      - name: Parse row fields
-        if: steps.row.outputs.has_row == 'true'
-        id: fields
+      - name: Show queue manifests
         run: |
-          python - <<'PY' >> "$GITHUB_OUTPUT"
-          import json
-          r = json.load(open("row.json"))
-          def g(k, d): return str(r.get(k) or d)
-          print(f"row_number={r['_row_number']}")
-          print(f"title={g('title','Deep Sleep Music')}")
-          print(f"style={g('style','ambient')}")
-          print(f"key={g('key','C')}")
-          print(f"tempo={g('tempo_bpm','60')}")
-          print(f"hours={g('duration_hours','8')}")
-          PY
+          for m in out/*_manifest.json; do echo "--- $m ---"; cat "$m"; echo; done
 
-      - name: Generate music
-        if: steps.row.outputs.has_row == 'true'
+      - name: Queue to YouTube as PRIVATE (only if secrets are set)
+        if: ${{ env.YT_REFRESH_TOKEN != '' }}
         run: |
-          python scripts/generate_music.py \
-            --key "${{ steps.fields.outputs.key }}" \
-            --tempo "${{ steps.fields.outputs.tempo }}" \
-            --loop-minutes 4 --seed "$RANDOM" --out loop.wav
+          python scripts/publish_queue.py --out-dir out --privacy private
 
-      - name: Build video
-        if: steps.row.outputs.has_row == 'true'
-        run: |
-          python scripts/make_video.py --loop loop.wav \
-            --duration-hours "${{ steps.fields.outputs.hours }}" --out final.mp4
-
-      - name: Select thumbnail (rotate pre-made pool)
-        if: steps.row.outputs.has_row == 'true'
-        run: |
-          python scripts/select_thumbnail.py \
-            --index "${{ steps.fields.outputs.row_number }}" --out thumbnail.png
-
-      - name: Upload to YouTube
-        if: steps.row.outputs.has_row == 'true'
-        id: upload
-        env:
-          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
-          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
-          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
-        run: |
-          python scripts/upload_youtube.py --video final.mp4 --thumbnail thumbnail.png \
-            --title "${{ steps.fields.outputs.title }} - ${{ steps.fields.outputs.hours }} Hours Black Screen" \
-            --description "Ambient calm music for sleep, study and focus." \
-            --tags "sleep,ambient,calm,black screen,study,focus" \
-            | tee upload.log
-          VID=$(grep -oP 'Uploaded video ID: \K.*' upload.log)
-          echo "video_id=$VID" >> "$GITHUB_OUTPUT"
-
-      - name: Mark row done
-        if: steps.row.outputs.has_row == 'true'
-        run: |
-          python scripts/read_sheet.py --sheet-id "${{ secrets.SHEET_ID }}" \
-            --creds sa.json \
-            --set-status "${{ steps.fields.outputs.row_number }}" done \
-            --video-id "${{ steps.upload.outputs.video_id }}"
+      - name: Upload metadata + manifests as artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: metadata-${{ github.run_id }}
+          path: |
+            out/*_manifest.json
+            out/*_meta.json
+          retention-days: 14
