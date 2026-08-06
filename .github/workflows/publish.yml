@@ -22,6 +22,9 @@ on:
       hours:
         description: "Long-form length in hours (8-12)"
         default: "10"
+      privacy:
+        description: "Upload visibility: private | unlisted | public"
+        default: "private"
 
 # One production run at a time so a slow long-form render can't overlap the next day.
 concurrency:
@@ -62,7 +65,7 @@ jobs:
       - name: Queue to YouTube as PRIVATE (only if secrets are set)
         if: ${{ env.YT_REFRESH_TOKEN != '' }}
         run: |
-          python scripts/publish_queue.py --out-dir out --privacy private
+          python scripts/publish_queue.py --out-dir out --privacy "${{ github.event.inputs.privacy || 'private' }}"
 
       - name: Upload metadata + manifests as artifacts
         if: always()
