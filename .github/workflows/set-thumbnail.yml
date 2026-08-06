@@ -1,0 +1,35 @@
+name: set-thumbnail
+
+# Manually set the branded custom thumbnail on an existing YouTube video.
+# Requires a verified channel and the YT_* repo secrets.
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_id:
+        description: "YouTube video ID (e.g. F9JbJA0zQvo)"
+        required: true
+      thumbnail:
+        description: "Thumbnail path in the repo"
+        default: "assets/branding/thumbnail_1280x720.png"
+
+jobs:
+  set-thumbnail:
+    runs-on: ubuntu-latest
+    env:
+      YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+      YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+      YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: pip install google-auth google-auth-oauthlib google-api-python-client
+      - name: Set thumbnail
+        env:
+          VIDEO_ID: ${{ github.event.inputs.video_id }}
+          THUMB: ${{ github.event.inputs.thumbnail }}
+        run: python scripts/set_video_thumbnail.py --video-id "$VIDEO_ID" --thumbnail "$THUMB"
