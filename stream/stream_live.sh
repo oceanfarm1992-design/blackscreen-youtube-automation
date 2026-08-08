@@ -39,5 +39,5 @@ exec ffmpeg -hide_banner -loglevel warning -fflags +genpts \
   "${AUDIO_INPUT[@]}" \
   -c:v libx264 -preset ultrafast -tune stillimage -pix_fmt yuv420p \
   -r 15 -g 30 -keyint_min 30 -b:v 2500k -maxrate 2500k -bufsize 5000k \
-  -c:a aac -b:a 160k -ar 44100 \
+  -c:a aac -b:a 256k -ar 44100 \
   -f flv "$RTMP_URL/$STREAM_KEY"
