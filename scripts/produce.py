@@ -143,20 +143,32 @@ def main():
     p.add_argument("--shorts", type=int, default=0,
                    help="test batch: produce Shorts for the first N of today's musics")
     p.add_argument("--longs", type=int, default=0,
-                   help="test batch: produce 12h long-forms for the first M of today's musics")
+                   help="test batch: produce long-forms for the first M of today's musics")
+    p.add_argument("--slot", type=int, default=None,
+                   help="produce ONE video: slot 0..(2*DAILY_COUNT-1) of today's rotation "
+                        "(even=long, odd=short); used by the spaced daily schedule")
     p.add_argument("--hours", type=int, default=T.LONG_HOURS_DEFAULT)
     p.add_argument("--seed", type=int, default=None, help="defaults to YYYYMMDD")
     p.add_argument("--out-dir", default="out")
     args = p.parse_args()
 
-    if not args.daily and not args.format and not (args.shorts or args.longs):
-        p.error("give --daily, --format, or --shorts/--longs")
+    if (not args.daily and not args.format and not (args.shorts or args.longs)
+            and args.slot is None):
+        p.error("give --daily, --format, --slot, or --shorts/--longs")
 
     seed = args.seed if args.seed is not None else int(date.today().strftime("%Y%m%d"))
     os.makedirs(args.out_dir, exist_ok=True)
 
     results = []
-    if args.shorts or args.longs:
+    if args.slot is not None:
+        # One video per run, so the 6 daily assets are spread out (never overlap).
+        # slot 0..5 -> music = slot//2, format = long (even) / short (odd).
+        selection = T.daily_selection()
+        theme = selection[(args.slot // 2) % len(selection)]
+        fmt = "long" if args.slot % 2 == 0 else "short"
+        print(f"Slot {args.slot}: {theme['key']} {fmt}")
+        results.append(produce_one(theme, fmt, args.out_dir, args.hours, seed + args.slot))
+    elif args.shorts or args.longs:
         # Custom test batch: M long-forms + N Shorts from today's rotation.
         need = max(args.shorts, args.longs, 1)
         selection = T.daily_selection(count=max(need, T.DAILY_COUNT))

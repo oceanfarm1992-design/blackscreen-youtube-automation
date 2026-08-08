@@ -1,7 +1,7 @@
 # Rollout Plan — Meditated Sleeping Production Pipeline
 
 The **code is done and verified**: the daily workflow produces the day's batch — **3
-musics × (12h long-form + 59s Short) = 6 videos** — brands them `#0D0D0D`, writes SEO
+musics × (10h long-form + 59s Short) = 6 videos**, one per run ~3.8h apart — brands them `#0D0D0D`, writes SEO
 metadata, and QCs durations. What remains is optional account setup so the videos can be
 uploaded to your channel.
 
@@ -59,13 +59,14 @@ or service account is needed — the musics are chosen by the date.
 
 ## Phase 3 — First run & verify  🙋🤖
 
-1. **Actions** tab → **daily-produce** → **Run workflow** (set hours 8–12 if you like;
+1. **Actions** tab → **daily-produce** → **Run workflow** (set hours 8–10 if you like;
    set `privacy` to `private`/`unlisted` for this run if you want to preview first).
 2. Watch the log: it produces the 3 Shorts + 3 long-forms, prints the QC manifests, and
    (if secrets are set) uploads them.
 3. Check the videos on your channel. The default is **public** — switch the `privacy`
    input to `private` for the first run if you'd rather review before going live.
-4. The daily **cron** (`0 6 * * *` UTC) then runs on its own.
+4. The **6 daily crons** (~3.8h apart, 00:00–19:00 UTC) then run on their own, one
+   video each.
 
 ---
 
@@ -80,8 +81,11 @@ or service account is needed — the musics are chosen by the date.
   spreads 7 distinct musics across days rather than repeating one.
 - **7-day token expiry:** if uploads start failing ~a week after setup, the OAuth app
   slipped back to Testing — re-publish to Production and re-mint the token.
-- **Long renders:** each 12h file is ~1 GB+ and uploads slowly; the workflow allows 330
-  minutes for the 6-asset batch.
+- **Long renders:** each 10h file is ~1 GB+ and uploads slowly; each run makes one video
+  and the workflow allows 90 minutes. (YouTube rejected exactly-12h uploads as "too
+  long", so long-form is 10h.)
+- **Spread schedule:** 6 crons/day ~3.8h apart (00:00, 03:48, 07:36, 11:24, 15:12, 19:00
+  UTC), one video each, so renders/uploads never run simultaneously.
 - **Auto-public:** uploads go **public** with no manual review step. Anything off (audio
   glitch, wrong metadata) is live immediately — set the `privacy` input to `private` for
   a manual test run before trusting the daily cron.

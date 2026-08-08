@@ -21,7 +21,8 @@ from datetime import date
 ANCHOR = date(2026, 8, 5)
 
 # Long-form target length in hours. Spec allows 8-12h; QC enforces that window.
-LONG_HOURS_DEFAULT = 12
+# 10h (not 12h) — YouTube rejected exactly-12h uploads as "too long".
+LONG_HOURS_DEFAULT = 10
 
 # How many different musics to publish per day (each gets a 12h long + a Short).
 # 3 musics = 6 uploads/day = 9,600 API units, within the free 10,000/day quota

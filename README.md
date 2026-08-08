@@ -4,10 +4,11 @@
 
 An autonomous pipeline that produces **6 videos per day** for the "Meditated Sleeping"
 YouTube channel and publishes them — **3 different musics**, each as a
-long-form + a Short:
+long-form + a Short. Videos are produced **one per run, ~3.8h apart**, so runs never
+overlap:
 
 - **Shorts** — exactly **59 seconds**, vertical **1080×1920**, for reach/discovery.
-- **Long-form** — **12 hours**, **1920×1080**, for deep sleep and background ambience.
+- **Long-form** — **10 hours**, **1920×1080**, for deep sleep and background ambience.
 
 All use the same immersive **`#0D0D0D`** black branded frame + thumbnail (glowing
 headphone icon + "Meditated Sleeping / Calm. Sleep. Restore."). Everything runs on
@@ -42,18 +43,18 @@ Any music can be mixed with healing frequencies via `generate_theme_audio.py` fl
 ## How a day runs
 
 ```
-scripts/produce.py --daily
-   │  pick today's 3 musics (themes.py daily_selection)
-   │  for each music → a 12h long AND a 59s Short:
+scripts/produce.py --slot N        (N = 0..5, one video per run)
+   │  slot//2 = which of today's 3 musics; even=10h long, odd=59s Short
    ├─ generate_theme_audio.py   numpy synthesis (Short = 59s; long = seamless loop)
    ├─ make_video.py             ffmpeg: branded #0D0D0D still + audio → mp4
    ├─ assets/branding/…         assign the 1280×720 black #0D0D0D thumbnail
    ├─ make_metadata.py          SEO title / description / tags per music & format
    └─ QC                        assert 59s / 8–12h and correct resolution
-        → writes *_manifest.json, status "queued"   (6 assets/day)
+        → writes *_manifest.json, status "queued"
 
-.github/workflows/publish.yml (daily cron)
-   → runs produce.py --daily, then (only if YT secrets are set) uploads as PUBLIC
+.github/workflows/publish.yml (6 crons/day, ~3.8h apart)
+   → maps each cron to a slot, runs produce.py --slot N, then (if YT secrets
+     are set) uploads as PUBLIC. One video per run so runs never overlap.
 ```
 
 Audio is **synthesized from numpy every run** (no samples), so each upload is original;
@@ -83,7 +84,8 @@ Needs Python 3.11+ and ffmpeg on PATH.
 pip install -r requirements.txt
 python scripts/produce.py --daily                        # today's full batch (6 assets)
 python scripts/produce.py --format short                 # today's first theme, 59s Short
-python scripts/produce.py --theme forest --format long --hours 12   # one 12h long-form
+python scripts/produce.py --slot 0                        # one video by schedule slot
+python scripts/produce.py --theme forest --format long --hours 10   # one 10h long-form
 ```
 
 Outputs land in `out/` (git-ignored) with a `*_manifest.json` QC report per asset.
