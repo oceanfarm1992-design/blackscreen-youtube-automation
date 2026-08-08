@@ -16,6 +16,9 @@ upload.log
 *.mp4
 *.wav
 
+# --- Live stream generated audio ---
+stream/audio/
+
 # --- Python ---
 __pycache__/
 *.pyc
