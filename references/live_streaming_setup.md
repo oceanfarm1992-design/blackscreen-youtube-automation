@@ -4,10 +4,16 @@ Run a permanent black-screen music live stream (like "lofi radio") entirely in t
 cloud, on a **free** Oracle Cloud VM. Your PC is never involved once it's running.
 
 How it works: a tiny always-on VM runs `ffmpeg`, streaming the black `#0D0D0D`
-branded frame plus rotating audio loops (all 7 musics, regenerated daily) to
-YouTube's RTMP ingest. A `systemd` service keeps it alive and auto-restarts it if
-the connection ever drops. A still-image music stream uses almost no CPU or
-bandwidth, so the free tier is plenty.
+branded frame plus audio to YouTube's RTMP ingest. You run **one dedicated 24/7
+stream per music** (Rain, Waterfall, Forest, Deep Sleep, Indian, Romantic, Romantic
+Night) — each its own YouTube broadcast with unique title/keywords, so they're
+distinct content, not duplicates. A `systemd` template service keeps each one alive
+and auto-restarts on drop. Audio is regenerated daily (fresh seeds) so no stream
+loops one identical file forever. A still-image music stream uses almost no CPU or
+bandwidth, so a single free VM can run all of them.
+
+> **Scale sensibly:** one stream per *distinct* music is fine. Do NOT clone the same
+> stream across many channels for volume — that reads as spam and risks suspension.
 
 ---
 
@@ -62,13 +68,19 @@ sudo bash stream/setup.sh
 
 `setup.sh` will:
 - install ffmpeg + Python deps,
-- **prompt you to paste the stream key** (stored root-only in `/etc/youtube-live.env`),
-- generate the audio loops,
-- install the `youtube-live` systemd service (auto-start on boot, auto-restart on drop),
-- add a **daily 04:17 UTC** job that regenerates fresh audio and restarts the stream,
-- start streaming immediately.
+- generate the audio loops (all 7 musics),
+- install a `youtube-live@<theme>` systemd **template** service,
+- **prompt you for a stream key per music** — enter a key to run that music as its
+  own 24/7 stream, or leave blank to skip it (keys stored root-only in
+  `/etc/youtube-live/<theme>.env`),
+- add a **daily 04:17 UTC** job that regenerates fresh audio and restarts the streams,
+- start one stream per music you gave a key for.
 
-Within ~30–60s your YouTube live dashboard should show the incoming stream as
+**One stream per music.** Create a separate **live broadcast** in YouTube Studio for
+each music (each with its own title/thumbnail/keys — see `live_seo.md`), and paste that
+broadcast's stream key when `setup.sh` asks for that music. Start with 2–3 and scale up.
+
+Within ~30–60s each YouTube live dashboard should show its incoming stream as
 **healthy/live**.
 
 ---
@@ -76,12 +88,17 @@ Within ~30–60s your YouTube live dashboard should show the incoming stream as
 ## Managing it
 
 ```bash
-sudo systemctl status youtube-live      # is it running?
-journalctl -u youtube-live -f           # live logs (ffmpeg output)
-sudo systemctl restart youtube-live     # restart now
-sudo systemctl stop youtube-live        # stop the stream
-bash stream/refresh_audio.sh            # regenerate audio loops on demand
+systemctl status 'youtube-live@*'          # all streams at once
+journalctl -u youtube-live@rain -f         # one stream's live logs
+sudo systemctl restart youtube-live@rain   # restart one stream
+sudo systemctl stop youtube-live@indian    # stop one stream
+sudo systemctl start youtube-live@forest   # start one (after adding its key)
+bash stream/refresh_audio.sh               # regenerate audio loops on demand
 ```
+
+To add another music later: create its YouTube broadcast, then
+`echo "STREAM_KEY=..." | sudo tee /etc/youtube-live/<theme>.env` and
+`sudo systemctl enable --now youtube-live@<theme>`.
 
 To change what plays, edit `THEMES` / `LOOP_SECONDS` in
 [`stream/refresh_audio.sh`](../stream/refresh_audio.sh); to change bitrate/fps, edit
