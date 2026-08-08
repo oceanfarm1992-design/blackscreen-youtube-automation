@@ -1,0 +1,15 @@
+# Force LF for all text so shell scripts run on the Linux streaming VM.
+* text=auto eol=lf
+
+*.sh   text eol=lf
+*.py   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.md   text eol=lf
+
+# Binaries must never be line-ending converted.
+*.png binary
+*.jpg binary
+*.wav binary
+*.mp4 binary
+*.skill binary
