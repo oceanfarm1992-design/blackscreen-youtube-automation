@@ -1,8 +1,9 @@
 # Rollout Plan — Meditated Sleeping Production Pipeline
 
-The **code is done and verified**: the daily workflow produces both videos (59s Short +
-8–12h long-form), brands them `#0D0D0D`, writes SEO metadata, and QCs durations. What
-remains is optional account setup so the queued videos can be uploaded to your channel.
+The **code is done and verified**: the daily workflow produces the day's batch — **3
+musics × (12h long-form + 59s Short) = 6 videos** — brands them `#0D0D0D`, writes SEO
+metadata, and QCs durations. What remains is optional account setup so the videos can be
+uploaded to your channel.
 
 Legend: 🤖 = automated · 🙋 = you do it once
 
@@ -10,16 +11,18 @@ Legend: 🤖 = automated · 🙋 = you do it once
 
 ## Phase 0 — Production pipeline (done & verified 🤖)
 
-- Theme rotation, 4 theme audio synths, `#0D0D0D` branded frames, metadata, QC, manifest.
-- Verified locally: today's Short renders at **1080×1920, 59.0s**; the long-form render
-  path renders at **1920×1080** with exact duration. All four themes synthesize cleanly.
+- 7-music library, 4-per… **3-per-day** date rotation, `#0D0D0D` branded frames + black
+  thumbnail, per-music SEO metadata, QC, manifest. Optional wellness frequency layers
+  (Solfeggio, 432 Hz, binaural/isochronic brainwaves, singing bowl).
+- All 7 musics synthesize cleanly; the long/short render paths produce **1920×1080** /
+  **1080×1920** at exact durations.
 - The daily GitHub Actions workflow runs on cron with **no secrets required** — without
   them it produces the assets and saves metadata as run artifacts.
 
-## Phase 1 — Turn on automatic queuing (optional)  🙋
+## Phase 1 — Turn on automatic publishing (optional)  🙋
 
-Only needed if you want the workflow to upload each day's videos to the channel as
-**private drafts** (instead of just producing the files). This is the fragile part.
+Only needed if you want the workflow to upload each day's videos to the channel (as
+**public** by default). This is the fragile part.
 
 1. [Google Cloud Console](https://console.cloud.google.com): create/pick a project,
    enable **YouTube Data API v3**.
@@ -51,31 +54,37 @@ Repo → **Settings → Secrets and variables → Actions**. Add the three value
 | `YT_CLIENT_SECRET` | from the OAuth client |
 | `YT_REFRESH_TOKEN` | the minted long-lived token |
 
-Once these exist, the daily run uploads both videos as **private**. No Google Sheet or
-service account is needed — the theme is chosen by the date.
+Once these exist, the daily run uploads the day's 6 videos as **public**. No Google Sheet
+or service account is needed — the musics are chosen by the date.
 
 ## Phase 3 — First run & verify  🙋🤖
 
-1. **Actions** tab → **daily-produce** → **Run workflow** (set hours 8–12 if you like).
-2. Watch the log: it produces the Short + long-form, prints the QC manifests, and (if
-   secrets are set) uploads both as private.
-3. Review the two private videos on your channel, then flip to **public** when happy.
+1. **Actions** tab → **daily-produce** → **Run workflow** (set hours 8–12 if you like;
+   set `privacy` to `private`/`unlisted` for this run if you want to preview first).
+2. Watch the log: it produces the 3 Shorts + 3 long-forms, prints the QC manifests, and
+   (if secrets are set) uploads them.
+3. Check the videos on your channel. The default is **public** — switch the `privacy`
+   input to `private` for the first run if you'd rather review before going live.
 4. The daily **cron** (`0 6 * * *` UTC) then runs on its own.
 
 ---
 
 ## Guardrails (these decide whether the channel survives)
 
-- **API quota:** 10,000 units/day; ~1,600 per upload → **~6 uploads/day max**. Two
-  videos/day is well within it.
+- **API quota:** 10,000 units/day; ~1,600 per upload → **~6 uploads/day max**. The
+  6 videos/day (3 musics × long + Short) = 9,600 units, right at the free limit. Raising
+  `DAILY_COUNT` in `themes.py` beyond 3 requires a quota increase or uploads fail.
 - **Reused/inauthentic-content policy:** YouTube demonetizes/suspends channels posting
   near-identical high-volume content. Audio is re-synthesized each run with a date-based
-  seed so no two uploads share a file; titles/descriptions vary by theme. Don't crank the
-  cron to many-per-day with the same theme.
+  seed so no two uploads share a file; titles/descriptions vary by music. The rotation
+  spreads 7 distinct musics across days rather than repeating one.
 - **7-day token expiry:** if uploads start failing ~a week after setup, the OAuth app
   slipped back to Testing — re-publish to Production and re-mint the token.
-- **Long renders:** an 8–12h file is ~1 GB+ and uploads slowly; the workflow allows 120
-  minutes. Keep to one long-form per run.
+- **Long renders:** each 12h file is ~1 GB+ and uploads slowly; the workflow allows 330
+  minutes for the 6-asset batch.
+- **Auto-public:** uploads go **public** with no manual review step. Anything off (audio
+  glitch, wrong metadata) is live immediately — set the `privacy` input to `private` for
+  a manual test run before trusting the daily cron.
 
 ## Notes on the pivot from the earlier version
 

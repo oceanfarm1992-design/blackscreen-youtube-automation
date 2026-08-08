@@ -26,6 +26,54 @@ import soundfile as sf
 
 SR = 44100
 
+# --------------------------------------------------------------------------- #
+# Wellness frequency reference tables
+#
+# These are tuning values only. The "purpose" labels are the descriptions used
+# by the meditation/wellness market for SEO; they are NOT medical claims and no
+# clinical efficacy is implied or asserted by this code.
+# --------------------------------------------------------------------------- #
+SOLFEGGIO = {  # Hz -> common label
+    "174": 174.0,  # grounding
+    "285": 285.0,  # tissue / cell
+    "396": 396.0,  # releasing fear
+    "417": 417.0,  # change / clearing
+    "528": 528.0,  # "miracle tone"
+    "639": 639.0,  # relationships
+    "741": 741.0,  # detox / solving
+    "852": 852.0,  # awareness
+    "963": 963.0,  # "pineal"
+}
+TUNING_432 = 432.0  # alternative concert pitch (vs standard 440 Hz)
+
+# Brainwave-entrainment beat rates (Hz). Bands use a representative mid-value.
+BRAINWAVE = {
+    "delta": 2.5,     # 0.5-4 Hz   deep sleep
+    "theta": 6.0,     # 4-8 Hz     meditation / REM
+    "alpha": 10.0,    # 8-13 Hz    calm wakefulness
+    "schumann": 7.83, # Earth resonance
+    "beta": 18.0,     # 13-30 Hz   alert / active thinking
+    "gamma": 40.0,    # 30-100 Hz  focus / productivity
+}
+
+
+def resolve_tone(s):
+    """A Solfeggio key ('528'), '432', or any Hz number -> float; 'none' -> None."""
+    if not s or str(s).lower() == "none":
+        return None
+    if s in SOLFEGGIO:
+        return SOLFEGGIO[s]
+    return float(s)
+
+
+def resolve_beat(s):
+    """A band name ('delta'/'theta'/'alpha'/'schumann') or any Hz number -> float."""
+    if not s or str(s).lower() == "none":
+        return None
+    if str(s).lower() in BRAINWAVE:
+        return BRAINWAVE[str(s).lower()]
+    return float(s)
+
 
 # --------------------------------------------------------------------------- #
 # Building blocks
@@ -53,6 +101,19 @@ def colored_noise(n, rng, tilt=1.0, highpass=None, lowpass=None):
         shape *= lowpass / np.sqrt(freqs**2 + lowpass**2)  # 1st-order LPF magnitude
     out = np.fft.irfft(spec * shape, n=n)
     return _norm(out)
+
+
+def lowpass(x, corner, order=2):
+    """Zero-phase low-pass in the frequency domain (Butterworth-magnitude).
+
+    Used to tame the hollow/tinny highs of stacked pure sines so tonal themes
+    sound warm rather than like an old radio.
+    """
+    n = len(x)
+    spec = np.fft.rfft(x)
+    freqs = np.fft.rfftfreq(n, 1.0 / SR)
+    mag = 1.0 / np.sqrt(1.0 + (freqs / corner) ** (2 * order))
+    return np.fft.irfft(spec * mag, n=n)
 
 
 def slow_env(n, rng, rate_hz=0.1, depth=0.3):
@@ -148,14 +209,173 @@ def synth_forest(n, rng):
 
 
 def synth_sleeping(n, rng):
+    # Foundation kept in the 110-220 Hz range so it is audible on laptop/phone
+    # speakers (a 55 Hz drone is inaudible there and reads as silence + hiss).
     drone = np.zeros(n)
-    for f in (55.0, 82.41, 110.0):  # A1 E2 A2
+    for f in (110.0, 164.81, 220.00):  # A2 E3 A3
         drone += sine(f, n, rng.uniform(0, 2 * np.pi))
-        drone += sine(f * (1 + 0.003), n, rng.uniform(0, 2 * np.pi))  # slow beating
-    chord = pad_layer(n, rng, roots=[220.00, 261.63, 329.63, 392.00], detune=0.005, amp=0.16)
-    delta = 1 + 0.08 * np.sin(2 * np.pi * 2.0 * _t(n))  # subtle ~2 Hz tremolo
-    mix = 0.5 * _norm(drone) + chord
-    return _norm(mix * delta, 0.85)
+        drone += sine(f * (1 + 0.0015), n, rng.uniform(0, 2 * np.pi))  # gentle beating
+    sub = sine(55.0, n, rng.uniform(0, 2 * np.pi))  # light sub-bass for headphones
+    # Prominent mid-range pad carries the melody on small speakers.
+    chord = pad_layer(n, rng, roots=[220.00, 261.63, 329.63, 392.00], detune=0.003, amp=0.24)
+    warm = lowpass(0.4 * _norm(drone) + 0.18 * sub + chord, corner=1600)
+    # Very slow swell instead of a 2 Hz flutter (which reads as warble/wobble).
+    delta = 1 + 0.04 * np.sin(2 * np.pi * 0.1 * _t(n))
+    return _norm(warm * delta, 0.9)
+
+
+def _pluck(freq, dur, rng, bright=1.4):
+    """An additive plucked-string tone (tanpura/sitar-like) with harmonic shimmer."""
+    m = int(dur * SR)
+    t = _t(m)
+    out = np.zeros(m)
+    n_harm = int(min(24, (SR / 2.0) / freq))
+    for h in range(1, n_harm + 1):
+        amp = 1.0 / (h ** (1.2 / bright))
+        hdecay = np.exp(-t * (1.5 + 0.5 * h) / dur)
+        out += amp * hdecay * np.sin(2 * np.pi * freq * h * t + rng.uniform(0, 2 * np.pi))
+    attack = np.minimum(1.0, t * 400.0)
+    return _norm(out) * attack
+
+
+def tanpura(n, rng, sa=220.0, pluck_sec=1.1):
+    """Repeating tanpura cycle: Pa - Sa - Sa - Sa(low), plucks ringing into each other."""
+    seq = [sa * 0.75, sa, sa, sa * 0.5]  # Pa (lower 5th), Sa, Sa, Sa (lower octave)
+    out = np.zeros(n)
+    pos, i = 0, 0
+    ring = pluck_sec * 3.2               # each pluck rings well past the next
+    while pos < n:
+        ev = 0.5 * _pluck(seq[i % len(seq)], ring, rng, bright=1.6)
+        end = min(n, pos + len(ev))
+        out[pos:end] += ev[:end - pos]
+        pos += int(pluck_sec * SR)
+        i += 1
+    return out
+
+
+def _indian_melody(n, rng, sa=220.0):
+    """Sparse bansuri-style flute over Raga Bhupali (S R G P D), with meend glides."""
+    scale = np.array([sa * r for r in (5 / 6, 1, 9 / 8, 5 / 4, 3 / 2, 5 / 3, 2)])
+    out = np.zeros(n)
+    pos, prev = 0, None
+    while pos < n:
+        note = float(rng.choice(scale))
+        dur = rng.uniform(1.8, 3.8)
+        m = int(dur * SR)
+        t = _t(m)
+        if prev is not None and rng.random() < 0.45:
+            f = np.linspace(prev, note, m)          # meend: glide from previous note
+        else:
+            f = np.full(m, note)
+        vib = 1.0 + 0.006 * np.sin(2 * np.pi * 5.0 * t)   # gentle flute vibrato
+        phase = 2 * np.pi * np.cumsum(f * vib) / SR
+        tone = np.sin(phase) + 0.15 * np.sin(2 * phase)   # soft 2nd harmonic
+        breath = 0.03 * colored_noise(m, rng, tilt=1.0, highpass=2000, lowpass=6000)
+        env = np.sin(np.linspace(0, np.pi, m)) ** 1.5     # soft swell in and out
+        seg = min(n - pos, m)
+        out[pos:pos + seg] += (0.5 * env * tone + env * breath)[:seg]
+        prev = note
+        pos += m + int(rng.uniform(0.6, 2.2) * SR)        # long rests -> sleepy
+    return _norm(out)
+
+
+def synth_indian(n, rng):
+    sa = 220.0
+    drone = tanpura(n, rng, sa=sa)
+    melody = _indian_melody(n, rng, sa=sa)
+    pad = pad_layer(n, rng, roots=[sa * 0.5, sa * 0.75, sa], amp=0.08)  # Sa Pa Sa support
+    warm = lowpass(0.6 * _norm(drone) + 0.4 * melody + pad, corner=2500)
+    return _norm(warm, 0.9)
+
+
+def progression_pad(n, rng, chords, chord_sec=8.0, amp=0.18, detune=0.004):
+    """Sustained chord pad that steps through `chords` (lists of Hz), crossfading."""
+    out = np.zeros(n)
+    seg = int(chord_sec * SR)
+    xf = int(min(1.5, chord_sec * 0.3) * SR)
+    pos, i = 0, 0
+    while pos < n:
+        L = min(seg + xf, n - pos)
+        if L <= 0:
+            break
+        t = _t(L)
+        chord = np.zeros(L)
+        for f in chords[i % len(chords)]:
+            for k in (1.0, 1 + detune, 1 - detune):
+                chord += np.sin(2 * np.pi * f * k * t + rng.uniform(0, 2 * np.pi))
+        env = np.ones(L)
+        fi = min(xf, L // 2)
+        if fi > 0:
+            env[:fi] = np.linspace(0, 1, fi)
+            env[-fi:] = np.linspace(1, 0, fi)
+        out[pos:pos + L] += amp * _norm(chord) * env
+        pos += seg
+        i += 1
+    return out
+
+
+def _bell(freq, dur, rng):
+    """Soft music-box / celesta note: quick-decaying bell partials."""
+    m = int(dur * SR)
+    t = _t(m)
+    out = np.zeros(m)
+    for r, w in ((1.0, 1.0), (2.0, 0.5), (3.0, 0.25), (4.2, 0.12)):
+        out += w * np.exp(-t * 3.0 / dur * (1 + 0.2 * r)) * \
+            np.sin(2 * np.pi * freq * r * t + rng.uniform(0, 2 * np.pi))
+    return _norm(out) * np.minimum(1.0, t * 300.0)
+
+
+def _warm_note(freq, dur, rng):
+    """Sustained warm note (sax/rhodes-ish) with gentle vibrato, for intimate moods."""
+    m = int(dur * SR)
+    t = _t(m)
+    vib = 1.0 + 0.008 * np.sin(2 * np.pi * 5.0 * t)
+    ph = 2 * np.pi * np.cumsum(freq * vib) / SR
+    tone = np.sin(ph) + 0.3 * np.sin(2 * ph) + 0.12 * np.sin(3 * ph)
+    env = np.sin(np.linspace(0, np.pi, m)) ** 1.2
+    return _norm(tone * env)
+
+
+def _sparse_melody(n, rng, scale, gap=(1.0, 3.0), dur=(0.8, 2.0), amp=0.3, maker=_bell):
+    """Place notes from `scale` (Hz array) at random spots with rests between them."""
+    out = np.zeros(n)
+    pos = 0
+    while pos < n:
+        ev = amp * maker(float(rng.choice(scale)), rng.uniform(*dur), rng)
+        end = min(n, pos + len(ev))
+        out[pos:end] += ev[:end - pos]
+        pos += int(rng.uniform(*gap) * SR)
+    return out
+
+
+def synth_romantic(n, rng):
+    """Warm 'love' music: lush major-7th progression + soft music-box melody."""
+    chords = [
+        [261.63, 329.63, 392.00, 493.88],  # Cmaj7
+        [220.00, 261.63, 329.63, 392.00],  # Am7
+        [174.61, 220.00, 261.63, 329.63],  # Fmaj7
+        [196.00, 246.94, 293.66, 349.23],  # G7
+    ]
+    pad = progression_pad(n, rng, chords, chord_sec=8.0, amp=0.18)
+    scale = np.array([261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25])
+    melody = _sparse_melody(n, rng, scale, gap=(1.2, 3.2), dur=(0.8, 1.8), amp=0.30, maker=_bell)
+    warm = lowpass(pad + melody, corner=3000)
+    return _norm(warm, 0.9)
+
+
+def synth_romantic_night(n, rng):
+    """Slow, low, smoky 'bedroom love' mood: minor-7th changes + sultry warm melody."""
+    chords = [
+        [110.00, 130.81, 164.81, 196.00],  # Am7
+        [146.83, 174.61, 220.00, 261.63],  # Dm7
+        [174.61, 220.00, 261.63, 329.63],  # Fmaj7
+        [164.81, 196.00, 246.94, 293.66],  # Em7
+    ]
+    pad = progression_pad(n, rng, chords, chord_sec=12.0, amp=0.20, detune=0.005)
+    scale = np.array([146.83, 164.81, 196.00, 220.00, 261.63, 293.66, 329.63])
+    melody = _sparse_melody(n, rng, scale, gap=(2.0, 5.0), dur=(2.0, 4.0), amp=0.26, maker=_warm_note)
+    warm = lowpass(pad + melody, corner=1800)
+    return _norm(warm, 0.9)
 
 
 SYNTHS = {
@@ -163,13 +383,109 @@ SYNTHS = {
     "waterfall": synth_waterfall,
     "forest": synth_forest,
     "sleeping": synth_sleeping,
+    "indian": synth_indian,
+    "romantic": synth_romantic,
+    "romantic_night": synth_romantic_night,
 }
 
 
 # --------------------------------------------------------------------------- #
-def to_stereo(mono, rng, width=0.25):
-    """Add gentle stereo width via a decorrelated, quieter side channel."""
-    side = colored_noise(len(mono), rng, tilt=1.0)
+# Wellness frequency layers (Solfeggio / 432 tone, binaural + isochronic
+# brainwave entrainment, Tibetan singing bowl). All mono unless noted.
+# --------------------------------------------------------------------------- #
+def _edge_fade(x, sec=1.5):
+    """Raised-cosine fade in/out to avoid clicks at clip edges."""
+    m = min(int(sec * SR), len(x) // 2)
+    if m <= 0:
+        return x
+    w = 0.5 - 0.5 * np.cos(np.linspace(0, np.pi, m))
+    x = np.array(x, dtype=float)
+    x[:m] *= w
+    x[-m:] *= w[::-1]
+    return x
+
+
+def tone_drone(n, rng, freq, amp=0.22):
+    """A warm sustained tone: fundamental + soft harmonics, low-passed, breathing.
+
+    Used for Solfeggio frequencies and 432 Hz tuning so they sound musical
+    rather than like a raw test tone.
+    """
+    out = sine(freq, n, phase=rng.uniform(0, 2 * np.pi))
+    out += 0.22 * sine(freq * 2, n, phase=rng.uniform(0, 2 * np.pi))
+    out += 0.08 * sine(freq * 3, n, phase=rng.uniform(0, 2 * np.pi))
+    out = lowpass(out, corner=freq * 3 + 400)
+    env = 0.85 + 0.15 * slow_env(n, rng, rate_hz=0.05, depth=1.0)
+    return amp * _norm(out) * env
+
+
+def binaural(n, rng, carrier, beat, amp=0.20):
+    """Binaural beat: L/R detuned by +-beat/2 so the brain perceives `beat` Hz.
+
+    Returns stereo (n, 2). Requires headphones to work as intended.
+    """
+    ph = rng.uniform(0, 2 * np.pi)
+    left = sine(carrier - beat / 2.0, n, phase=ph)
+    right = sine(carrier + beat / 2.0, n, phase=ph)
+    return amp * np.stack([left, right], axis=1)
+
+
+def isochronic(n, rng, carrier, beat, amp=0.20, duty=0.5):
+    """Isochronic tone: a single carrier pulsed on/off at `beat` Hz.
+
+    Works on speakers (no headphones needed). The gate is a raised-cosine pulse
+    so pulses are click-free.
+    """
+    tone = sine(carrier, n, phase=rng.uniform(0, 2 * np.pi))
+    ph = (beat * _t(n)) % 1.0
+    gate = np.where(ph < duty, 0.5 - 0.5 * np.cos(2 * np.pi * ph / max(duty, 1e-6)), 0.0)
+    return amp * tone * gate
+
+
+def _bowl_strike(rng, base):
+    """One Tibetan-bowl strike: inharmonic partials, mallet transient, long decay."""
+    dur = rng.uniform(5.0, 9.0)
+    m = int(dur * SR)
+    ratios = (1.0, 2.7, 4.9, 7.4, 10.2)   # typical metal-bowl inharmonic series
+    weights = (1.0, 0.55, 0.32, 0.18, 0.10)
+    out = np.zeros(m)
+    for r, w in zip(ratios, weights):
+        f = base * r
+        beat = rng.uniform(0.5, 1.6)      # shimmer between twin partials
+        partial = (sine(f, m, rng.uniform(0, 2 * np.pi))
+                   + sine(f + beat, m, rng.uniform(0, 2 * np.pi)))
+        decay = np.exp(-np.linspace(0, rng.uniform(3.5, 5.5), m) / (1.0 + r * 0.05))
+        out += w * partial * decay
+    k = int(0.02 * SR)                     # short mallet contact transient
+    out[:k] += 0.3 * np.exp(-np.linspace(0, 60, k)) * rng.standard_normal(k)
+    return 0.5 * _edge_fade(_norm(out), 0.03)
+
+
+def singing_bowl(n, rng, base, period_sec=12.0, amp=0.6):
+    """Repeated singing-bowl strikes spaced ~period_sec apart across the clip."""
+    out = np.zeros(n)
+    t = 0
+    while t < n:
+        ev = _bowl_strike(rng, base)
+        end = min(n, t + len(ev))
+        out[t:end] += ev[:end - t]
+        t += int(rng.uniform(period_sec * 0.7, period_sec * 1.3) * SR)
+    return amp * out
+
+
+# --------------------------------------------------------------------------- #
+def to_stereo(mono, rng, width=0.12):
+    """Add gentle stereo width via a decorrelated, quieter side channel.
+
+    width <= 0 returns clean dual-mono with NO added noise (used for pure tone /
+    frequency tracks, where any widener noise would read as radio-like hiss).
+    The side channel is low-passed so it reads as soft "air" rather than the
+    broadband hiss that stands out as static over pure-tone themes.
+    """
+    if width <= 0:
+        s = _norm(mono, 0.9)
+        return np.stack([s, s], axis=1)
+    side = colored_noise(len(mono), rng, tilt=1.0, lowpass=1200)
     left = mono + width * side
     right = mono - width * side
     return np.stack([_norm(left, 0.9), _norm(right, 0.9)], axis=1)
@@ -180,18 +496,36 @@ def crossfade_loop(audio, crossfade_sec=3.0):
     nfx = int(crossfade_sec * SR)
     if nfx * 2 >= len(audio):
         return audio
-    fin = np.linspace(0, 1, nfx)[:, None]
-    fout = np.linspace(1, 0, nfx)[:, None]
+    # Equal-power (constant-energy) crossfade: a linear fade dips ~6 dB in the
+    # middle of the seam, which recurs every loop as an audible whoosh/warble.
+    t = np.linspace(0, 1, nfx)[:, None]
+    fin = np.sqrt(t)
+    fout = np.sqrt(1.0 - t)
     head = audio[:nfx] * fin + audio[-nfx:] * fout
     return np.concatenate([head, audio[nfx:-nfx]])
 
 
 def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--theme", required=True, choices=list(SYNTHS.keys()))
+    p = argparse.ArgumentParser(
+        description="Synthesize ambient themes and/or wellness frequency layers "
+                    "(Solfeggio, 432 Hz, binaural/isochronic brainwaves, singing bowl).")
+    p.add_argument("--theme", default="none", choices=list(SYNTHS.keys()) + ["none"],
+                   help="ambient bed, or 'none' for a pure frequency track")
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--seconds", type=float, help="exact clip length (for the 59s Short)")
     g.add_argument("--loop-seconds", type=float, help="seamless loop length (for long-form)")
+
+    # Wellness frequency layers (all optional; combine freely with --theme)
+    p.add_argument("--tone", default=None,
+                   help="carrier/drone freq: a Solfeggio value "
+                        f"({'/'.join(SOLFEGGIO)}), '432', or any Hz number")
+    p.add_argument("--beat", default=None,
+                   help="brainwave rate: delta/theta/alpha/schumann, or any Hz number")
+    p.add_argument("--beat-type", default="binaural", choices=["binaural", "isochronic"],
+                   help="binaural needs headphones; isochronic works on speakers")
+    p.add_argument("--bowl", action="store_true", help="overlay Tibetan singing-bowl strikes")
+    p.add_argument("--tone-gain", type=float, default=0.22)
+    p.add_argument("--beat-gain", type=float, default=0.20)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--out", default="audio.wav")
     args = p.parse_args()
@@ -200,13 +534,47 @@ def main():
     length = args.seconds if args.seconds else args.loop_seconds
     n = int(length * SR)
 
-    mono = SYNTHS[args.theme](n, rng)
-    stereo = to_stereo(mono, rng)
+    carrier = resolve_tone(args.tone)
+    beat = resolve_beat(args.beat)
+    layers = []
+
+    # ---- mono bed: ambient theme + tone drone + isochronic + bowl ----
+    mono = SYNTHS[args.theme](n, rng) if args.theme != "none" else np.zeros(n)
+    if args.theme != "none":
+        layers.append(f"theme={args.theme}")
+
+    binaural_carrier = beat is not None and args.beat_type == "binaural"
+    if carrier is not None and not binaural_carrier:
+        mono = mono + tone_drone(n, rng, carrier, amp=args.tone_gain)
+        layers.append(f"tone={carrier:g}Hz")
+    if beat is not None and args.beat_type == "isochronic":
+        mono = mono + isochronic(n, rng, carrier or 200.0, beat, amp=args.beat_gain)
+        layers.append(f"isochronic={beat:g}Hz@{carrier or 200:g}Hz")
+    if args.bowl:
+        mono = mono + singing_bowl(n, rng, base=carrier or 196.0)
+        layers.append("bowl")
+
+    if np.max(np.abs(mono)) > 1e-9:
+        mono = _norm(mono, 0.9)
+
+    # ---- to stereo, then binaural overlay (must stay L/R distinct) ----
+    # Ambient themes want the noise-based widener; pure tone/frequency tracks do
+    # not (that noise is the "sss" hiss), so use clean dual-mono for those.
+    width = 0.12 if args.theme != "none" else 0.0
+    stereo = to_stereo(mono, rng, width=width)
+    if binaural_carrier:
+        stereo = stereo + binaural(n, rng, carrier or 200.0, beat, amp=args.beat_gain)
+        layers.append(f"binaural={beat:g}Hz@{carrier or 200:g}Hz")
+    stereo = _norm(stereo, 0.9)
+
     if args.loop_seconds:
         stereo = crossfade_loop(stereo)
 
+    if not layers:
+        p.error("nothing to synthesize: give --theme and/or --tone/--beat/--bowl")
+
     sf.write(args.out, stereo, SR)
-    print(f"Wrote {args.out}: {len(stereo)/SR:.2f}s, theme={args.theme}, seed={args.seed}")
+    print(f"Wrote {args.out}: {len(stereo)/SR:.2f}s, layers=[{', '.join(layers)}], seed={args.seed}")
 
 
 if __name__ == "__main__":

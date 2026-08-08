@@ -134,25 +134,44 @@ def produce_one(theme, fmt, out_dir, hours, seed):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--theme", default="auto", help="theme key or 'auto' for date rotation")
-    p.add_argument("--format", required=True, choices=["short", "long", "both"])
+    p.add_argument("--format", choices=["short", "long", "both"],
+                   help="required unless --daily is used")
+    p.add_argument("--daily", action="store_true",
+                   help=f"produce the day's batch: {T.DAILY_COUNT} musics x (12h long + Short)")
+    p.add_argument("--count", type=int, default=T.DAILY_COUNT,
+                   help="number of musics per day for --daily")
     p.add_argument("--hours", type=int, default=T.LONG_HOURS_DEFAULT)
     p.add_argument("--seed", type=int, default=None, help="defaults to YYYYMMDD")
     p.add_argument("--out-dir", default="out")
     args = p.parse_args()
 
-    theme = T.resolve_theme(args.theme)
+    if not args.daily and not args.format:
+        p.error("either --daily or --format is required")
+
     seed = args.seed if args.seed is not None else int(date.today().strftime("%Y%m%d"))
     os.makedirs(args.out_dir, exist_ok=True)
 
-    formats = ["short", "long"] if args.format == "both" else [args.format]
-    results = [produce_one(theme, f, args.out_dir, args.hours, seed + i)
-               for i, f in enumerate(formats)]
+    results = []
+    if args.daily:
+        # N different musics per day (DAILY_COUNT); each gets a 12h long + a Short.
+        selection = T.daily_selection(count=args.count)
+        print(f"Daily batch ({len(selection)} musics x long+short): "
+              + ", ".join(t["key"] for t in selection))
+        for i, theme in enumerate(selection):
+            for j, fmt in enumerate(["long", "short"]):
+                results.append(produce_one(theme, fmt, args.out_dir, args.hours,
+                                           seed + i * 10 + j))
+    else:
+        theme = T.resolve_theme(args.theme)
+        formats = ["short", "long"] if args.format == "both" else [args.format]
+        results = [produce_one(theme, f, args.out_dir, args.hours, seed + i)
+                   for i, f in enumerate(formats)]
 
     failed = [r for r in results if r["status"] != "queued"]
     if failed:
-        print(f"\n{len(failed)} asset(s) failed QC.")
+        print(f"\n{len(failed)} of {len(results)} asset(s) failed QC.")
         sys.exit(1)
-    print(f"\nAll {len(results)} asset(s) queued for theme '{theme['key']}'.")
+    print(f"\nAll {len(results)} asset(s) queued.")
 
 
 if __name__ == "__main__":

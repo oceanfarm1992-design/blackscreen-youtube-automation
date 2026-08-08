@@ -1,14 +1,21 @@
 name: daily-produce
 
-# Produces the day's two videos for "Meditated Sleeping" and queues them:
-#   - one 59s Short  (vertical 1080x1920, #0D0D0D branded)
-#   - one 8-12h long-form (1920x1080, #0D0D0D branded)
-# Theme rotates daily (rain -> waterfall -> forest -> sleeping) based on the date.
+# Produces the day's batch for "Meditated Sleeping" and queues it:
+#   - 3 different musics per day, each as a 12h long-form (1920x1080, #0D0D0D)
+#   - 3 matching 59s Shorts (vertical 1080x1920, #0D0D0D) for better reach
+#   -> 6 assets/day. All use the same black branded thumbnail.
+# Musics rotate daily through the whole library (rain, waterfall, forest,
+# sleeping, indian, romantic, romantic_night) based on the date.
 # Runs on a PUBLIC repo so standard-runner minutes are free and unmetered.
 #
+# YouTube quota: the Data API default is 10,000 units/day and each upload costs
+# 1,600 units. 6 uploads/day = 9,600 units, within the free quota. (Raise
+# DAILY_COUNT in themes.py only after a quota increase, or uploads will fail.)
+#
 # Optional repo Secrets (Settings -> Secrets and variables -> Actions). If present,
-# both videos are uploaded to the channel as PRIVATE (queued) — nothing goes public
-# automatically. Without them, the assets are produced and saved as run artifacts.
+# the day's videos are uploaded to the channel as PUBLIC. Without them, the assets
+# are produced and saved as run artifacts only. Use the workflow_dispatch "privacy"
+# input to override to private/unlisted for a manual run.
 #   YT_CLIENT_ID, YT_CLIENT_SECRET, YT_REFRESH_TOKEN  - from the one-time OAuth setup
 
 on:
@@ -16,15 +23,12 @@ on:
     - cron: "0 6 * * *"    # daily at 06:00 UTC
   workflow_dispatch:
     inputs:
-      format:
-        description: "Format: both | short | long"
-        default: "both"
       hours:
         description: "Long-form length in hours (8-12)"
-        default: "10"
+        default: "12"
       privacy:
         description: "Upload visibility: private | unlisted | public"
-        default: "private"
+        default: "public"
 
 # One production run at a time so a slow long-form render can't overlap the next day.
 concurrency:
@@ -34,7 +38,7 @@ concurrency:
 jobs:
   produce:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 330
     env:
       YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
       YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
@@ -52,20 +56,19 @@ jobs:
           pip install -r requirements.txt
           sudo apt-get update && sudo apt-get install -y ffmpeg
 
-      - name: Produce video(s) (today's theme) + QC
+      - name: Produce the day's batch (3 musics x 12h long + 3 Shorts) + QC
         run: |
-          python scripts/produce.py \
-            --format "${{ github.event.inputs.format || 'both' }}" \
-            --hours "${{ github.event.inputs.hours || 10 }}" --out-dir out
+          python scripts/produce.py --daily \
+            --hours "${{ github.event.inputs.hours || 12 }}" --out-dir out
 
       - name: Show queue manifests
         run: |
           for m in out/*_manifest.json; do echo "--- $m ---"; cat "$m"; echo; done
 
-      - name: Queue to YouTube as PRIVATE (only if secrets are set)
+      - name: Upload to YouTube as PUBLIC (only if secrets are set)
         if: ${{ env.YT_REFRESH_TOKEN != '' }}
         run: |
-          python scripts/publish_queue.py --out-dir out --privacy "${{ github.event.inputs.privacy || 'private' }}"
+          python scripts/publish_queue.py --out-dir out --privacy "${{ github.event.inputs.privacy || 'public' }}"
 
       - name: Upload metadata + manifests as artifacts
         if: always()

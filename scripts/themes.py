@@ -21,7 +21,12 @@ from datetime import date
 ANCHOR = date(2026, 8, 5)
 
 # Long-form target length in hours. Spec allows 8-12h; QC enforces that window.
-LONG_HOURS_DEFAULT = 10
+LONG_HOURS_DEFAULT = 12
+
+# How many different musics to publish per day (each gets a 12h long + a Short).
+# 3 musics = 6 uploads/day = 9,600 API units, within the free 10,000/day quota
+# (each YouTube upload costs 1,600 units). Raise only with a quota increase.
+DAILY_COUNT = 3
 
 # Ordered rotation. `synth` names a function in generate_theme_audio.py.
 THEMES = [
@@ -38,9 +43,10 @@ THEMES = [
             "into deep, restful sleep."
         ),
         "tags": [
-            "rain sounds", "rain sounds for sleeping", "sleep music", "rain and thunder",
-            "deep sleep", "relaxing rain", "ambient music", "black screen", "calm music",
-            "study music", "meditation", "insomnia relief", "white noise",
+            "rain sounds for sleeping", "sleep music", "rain sounds", "deep sleep music",
+            "relaxing rain", "rain and thunder sounds", "rain sounds black screen",
+            "black screen", "calm music", "study music", "meditation music",
+            "insomnia relief music", "white noise", "rain ambience", "sleep sounds",
         ],
     },
     {
@@ -55,9 +61,10 @@ THEMES = [
             "harmony. Perfect for deep sleep, relaxation, meditation, and focused study."
         ),
         "tags": [
-            "waterfall sounds", "water sounds", "sleep music", "relaxing water",
-            "nature sounds", "deep sleep", "ambient music", "black screen", "focus music",
-            "meditation", "study music", "white noise", "stress relief",
+            "waterfall sounds", "water sounds for sleeping", "sleep music",
+            "relaxing water sounds", "nature sounds", "deep sleep music",
+            "waterfall white noise", "black screen", "focus music", "meditation music",
+            "study music", "calming water sounds", "stress relief music", "sleep sounds",
         ],
     },
     {
@@ -73,9 +80,10 @@ THEMES = [
             "and peaceful focus."
         ),
         "tags": [
-            "forest sounds", "nature sounds", "bird sounds", "sleep music",
-            "relaxing nature", "deep sleep", "ambient music", "black screen",
-            "meditation", "study music", "calm music", "forest ambience", "birdsong",
+            "forest sounds", "nature sounds for sleeping", "birds singing", "sleep music",
+            "relaxing nature sounds", "deep sleep music", "forest ambience", "birdsong",
+            "black screen", "meditation music", "calming nature sounds", "study music",
+            "forest white noise", "sleep sounds",
         ],
     },
     {
@@ -90,9 +98,67 @@ THEMES = [
             "Soft, calming tones designed to quiet the mind and guide you into deep rest."
         ),
         "tags": [
-            "sleep music", "deep sleep music", "ambient music", "relaxing music",
-            "calm music", "meditation music", "black screen", "sleep aid",
-            "insomnia relief", "delta waves", "healing music", "stress relief", "spa music",
+            "sleep music", "deep sleep music", "relaxing sleep music",
+            "calm music for sleeping", "meditation music", "ambient sleep music",
+            "black screen sleep", "sleep aid", "insomnia relief music", "soothing music",
+            "healing music", "stress relief music", "spa music", "sleep sounds",
+        ],
+    },
+    {
+        "key": "indian",
+        "name": "Indian Sleep Music",
+        "synth": "indian",
+        "emoji": "\U0001FAB7",  # 🪷
+        "short_title": "Indian Flute Sleep Music \U0001FAB7 Deep Sleep in 59s #shorts",
+        "long_title": "Indian Sleep Music \U0001FAB7 {hours} Hours Tanpura & Flute for Deep Sleep | Black Screen",
+        "description": (
+            "Soothing Indian classical sleep music: a gentle tanpura drone with soft "
+            "bansuri-style flute in a calming raga. Let the meditative sound quiet your "
+            "mind and guide you into deep, restful sleep."
+        ),
+        "tags": [
+            "indian sleep music", "tanpura meditation", "indian flute music",
+            "raga for sleep", "meditation music", "deep sleep music",
+            "relaxing indian music", "indian classical music", "yoga music", "spa music",
+            "healing music", "calming flute music", "black screen", "sleep sounds",
+        ],
+    },
+    {
+        "key": "romantic",
+        "name": "Romantic Love Music",
+        "synth": "romantic",
+        "emoji": "\U0001F495",  # 💕
+        "short_title": "Romantic Love Music \U0001F495 Warm & Soothing #shorts",
+        "long_title": "Romantic Music \U0001F495 {hours} Hours Warm Instrumental Love Songs | Black Screen",
+        "description": (
+            "Warm, tender instrumental love music with lush chords and a soft melody. "
+            "Perfect for a romantic evening, a candle-lit dinner, relaxing together, or "
+            "simply unwinding in a gentle, heartfelt mood."
+        ),
+        "tags": [
+            "romantic music", "romantic instrumental", "relaxing romantic music",
+            "calm romantic music", "dinner music", "date night music",
+            "background music", "soft piano music", "mood music", "relaxing music",
+            "romantic background music", "instrumental music", "black screen",
+        ],
+    },
+    {
+        "key": "romantic_night",
+        "name": "Romantic Night Music",
+        "synth": "romantic_night",
+        "emoji": "\U0001F339",  # 🌹
+        "short_title": "Romantic Night Music \U0001F339 Smooth & Relaxing #shorts",
+        "long_title": "Romantic Night Music \U0001F339 {hours} Hours Smooth Relaxing Instrumental | Black Screen",
+        "description": (
+            "Slow, smooth, and warm instrumental music for a relaxing romantic evening. "
+            "Mellow chords and a soft melody set a calm, cozy mood — perfect for a quiet "
+            "dinner, unwinding after a long day, or peaceful time together."
+        ),
+        "tags": [
+            "romantic music", "relaxing romantic music", "romantic instrumental",
+            "smooth relaxing music", "date night music", "dinner music",
+            "calm background music", "evening music", "soft instrumental music",
+            "mood music", "chill music", "relaxing music", "black screen",
         ],
     },
 ]
@@ -104,7 +170,8 @@ BRAND_TAGLINE = "Calm. Sleep. Restore."
 DESCRIPTION_FOOTER = (
     "\n\n— {brand} — {tagline}\n\n"
     "\U0001F3A7 Best experienced with headphones at a low, comfortable volume.\n"
-    "All audio is original and generated for this channel.\n\n"
+    "\U0001F3B5 All music is original, thoughtfully created with the help of AI for a "
+    "calm and relaxing listening experience.\n\n"
     "Please note: this content is for relaxation and ambience only and is not a "
     "substitute for medical advice or treatment."
 )
@@ -115,6 +182,19 @@ def theme_for_date(d: date | None = None) -> dict:
     d = d or date.today()
     idx = (d - ANCHOR).days % len(THEMES)
     return THEMES[idx]
+
+
+def daily_selection(d: date | None = None, count: int = DAILY_COUNT) -> list[dict]:
+    """Return `count` themes for the given date.
+
+    A sliding window of `count` themes advances by `count` positions each day, so
+    over successive days the whole library is cycled through for variety (rather
+    than the same set repeating). Deterministic: the date fully fixes the picks.
+    """
+    d = d or date.today()
+    day_idx = (d - ANCHOR).days
+    start = (day_idx * count) % len(THEMES)
+    return [THEMES[(start + i) % len(THEMES)] for i in range(count)]
 
 
 def theme_by_key(key: str) -> dict:

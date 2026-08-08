@@ -2,43 +2,58 @@
 
 *Calm. Sleep. Restore.*
 
-An autonomous pipeline that produces **two videos per day** for the "Meditated Sleeping"
-YouTube channel and queues them for publishing:
+An autonomous pipeline that produces **6 videos per day** for the "Meditated Sleeping"
+YouTube channel and publishes them — **3 different musics**, each as a
+long-form + a Short:
 
-- **Short** — exactly **59 seconds**, vertical **1080×1920**, for reach/discovery.
-- **Long-form** — **8–12 hours**, **1920×1080**, for deep sleep and background ambience.
+- **Shorts** — exactly **59 seconds**, vertical **1080×1920**, for reach/discovery.
+- **Long-form** — **12 hours**, **1920×1080**, for deep sleep and background ambience.
 
-Both use the same immersive **`#0D0D0D`** branded frame (glowing headphone icon +
-"Meditated Sleeping / Calm. Sleep. Restore."). Everything runs on GitHub's Ubuntu
-runners; no machine of yours needs to stay on.
+All use the same immersive **`#0D0D0D`** black branded frame + thumbnail (glowing
+headphone icon + "Meditated Sleeping / Calm. Sleep. Restore."). Everything runs on
+GitHub's Ubuntu runners; no machine of yours needs to stay on.
 
-## Daily theme rotation
+## Daily music rotation
 
-One theme per day, cycling in order (date-driven, no state file needed):
+The library has **7 musics**. Each day publishes **3 of them** (a sliding window that
+advances 3 per day), so the whole library is cycled through for variety — date-driven,
+no state file needed:
 
-| Day | Theme | Sound design |
-|----|----|----|
-| 1 | **Rainy with Calm Music** | gentle rainfall + distant thunder + soft ambient pads |
-| 2 | **Waterfall Music** | steady flowing water + low rumble + gentle harmony |
-| 3 | **Natural Green Forest** | soft wind + random water drops + bird chirps + pad |
-| 4 | **Sleeping Music** | deep drone + slow evolving chords + subtle delta-rate tremolo |
+| Music | Sound design |
+|----|----|
+| **Rainy with Calm Music** | gentle rainfall + distant thunder + soft ambient pads |
+| **Waterfall Music** | steady flowing water + low rumble + gentle harmony |
+| **Natural Green Forest** | soft wind + random water drops + bird chirps + pad |
+| **Sleeping Music** | warm mid-range drone + slow evolving chords + slow swell |
+| **Indian Sleep Music** | tanpura drone + soft bansuri-style flute (Raga Bhupali) |
+| **Romantic Love Music** | lush major-7th chords + soft music-box melody |
+| **Romantic Night Music** | slow low minor-7th chords + sultry warm melody |
 
-Anchor date `2026-08-05` = Rain (see `scripts/themes.py`).
+Anchor date `2026-08-05` (see `scripts/themes.py`).
+
+### Optional wellness frequency layers
+
+Any music can be mixed with healing frequencies via `generate_theme_audio.py` flags:
+`--tone` (9 Solfeggio tones, 432 Hz, or any Hz), `--beat`
+(delta/theta/alpha/schumann/beta/gamma as **binaural** or **isochronic**), and
+`--bowl` (Tibetan singing bowl). Example:
+`generate_theme_audio.py --theme rain --beat gamma --beat-type binaural --loop-seconds 123`.
 
 ## How a day runs
 
 ```
-scripts/produce.py --format both
-   │  pick today's theme (themes.py)
+scripts/produce.py --daily
+   │  pick today's 3 musics (themes.py daily_selection)
+   │  for each music → a 12h long AND a 59s Short:
    ├─ generate_theme_audio.py   numpy synthesis (Short = 59s; long = seamless loop)
    ├─ make_video.py             ffmpeg: branded #0D0D0D still + audio → mp4
-   ├─ assets/branding/…         assign the 1280×720 #0D0D0D thumbnail
-   ├─ make_metadata.py          SEO title / description / tags per theme & format
+   ├─ assets/branding/…         assign the 1280×720 black #0D0D0D thumbnail
+   ├─ make_metadata.py          SEO title / description / tags per music & format
    └─ QC                        assert 59s / 8–12h and correct resolution
-        → writes *_manifest.json, status "queued"
+        → writes *_manifest.json, status "queued"   (6 assets/day)
 
 .github/workflows/publish.yml (daily cron)
-   → runs produce.py, then (only if YT secrets are set) uploads both as PRIVATE
+   → runs produce.py --daily, then (only if YT secrets are set) uploads as PUBLIC
 ```
 
 Audio is **synthesized from numpy every run** (no samples), so each upload is original;
@@ -48,8 +63,8 @@ the seed defaults to the date, and varies per format, so consecutive videos diff
 
 | Path | Purpose |
 |---|---|
-| `scripts/themes.py` | 4 themes: synth params, SEO metadata, date-based rotation |
-| `scripts/generate_theme_audio.py` | Synthesize rain / waterfall / forest / sleeping audio |
+| `scripts/themes.py` | 7 musics: synth params, SEO metadata, 4-per-day rotation |
+| `scripts/generate_theme_audio.py` | Synthesize all 7 musics + wellness frequency layers |
 | `scripts/make_video.py` | ffmpeg-merge audio with the branded still frame |
 | `scripts/make_metadata.py` | Emit SEO title/description/tags JSON per theme & format |
 | `scripts/produce.py` | Orchestrator: audio → video → thumbnail → metadata → QC → manifest |
@@ -66,15 +81,22 @@ Needs Python 3.11+ and ffmpeg on PATH.
 
 ```bash
 pip install -r requirements.txt
-python scripts/produce.py --format short                 # today's theme, 59s Short
-python scripts/produce.py --theme forest --format long --hours 10   # a 10h long-form
+python scripts/produce.py --daily                        # today's full batch (6 assets)
+python scripts/produce.py --format short                 # today's first theme, 59s Short
+python scripts/produce.py --theme forest --format long --hours 12   # one 12h long-form
 ```
 
 Outputs land in `out/` (git-ignored) with a `*_manifest.json` QC report per asset.
 
 ## Publishing
 
-The daily workflow **never publishes public automatically.** If the three `YT_*`
-secrets are set it uploads both videos as **private** (queued on the channel); you
-review and flip them to public yourself. See [PLAN.md](PLAN.md) for the one-time
+If the three `YT_*` secrets are set, the daily workflow uploads the day's assets as
+**public** automatically. Override per manual run with the `workflow_dispatch`
+"privacy" input (`private` / `unlisted` / `public`). Without the secrets, videos are
+produced and saved as run artifacts only. See [PLAN.md](PLAN.md) for the one-time
 OAuth setup and the guardrails (API quota, content-policy, token expiry).
+
+> **YouTube API quota:** the default is 10,000 units/day and each upload costs
+> 1,600 units. The **6 uploads/day** (3 musics × long + Short) = 9,600 units, which
+> fits within the free quota. Raising `DAILY_COUNT` in `themes.py` beyond 3 needs a
+> quota increase (Google Cloud console), or the extra uploads fail with `quotaExceeded`.

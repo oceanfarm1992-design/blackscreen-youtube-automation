@@ -46,7 +46,9 @@ def build_metadata(theme: dict, fmt: str, hours: int) -> dict:
         "description": description,
         "tags": tags,
         "categoryId": CATEGORY_MUSIC,
-        "privacyStatus": "private",  # queued; publish manually or flip after review
+        # Informational only; the actual upload visibility is set by
+        # publish_queue.py --privacy (the workflow uploads PUBLIC by default).
+        "privacyStatus": "public",
     }
 
 

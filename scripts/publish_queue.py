@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-Upload every produced asset in the output dir to YouTube as PRIVATE (queued).
+Upload every produced asset in the output dir to YouTube (PUBLIC by default).
 
 Reads the *_manifest.json files written by produce.py, and for each with
-status "queued", uploads the video + metadata + thumbnail. Videos are uploaded
-PRIVATE by default so nothing goes public without a human flipping visibility.
+status "queued", uploads the video + metadata + thumbnail. Pass --privacy to
+upload as private or unlisted instead.
 
 Requires the same env vars as upload_youtube.py (YT_CLIENT_ID/SECRET/REFRESH_TOKEN).
 
 Usage:
-    python publish_queue.py --out-dir out
-    python publish_queue.py --out-dir out --privacy unlisted
+    python publish_queue.py --out-dir out                    # public
+    python publish_queue.py --out-dir out --privacy private  # queue for review
 """
 import argparse
 import glob
@@ -29,7 +29,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--out-dir", default="out")
-    p.add_argument("--privacy", default="private", choices=["private", "unlisted", "public"])
+    p.add_argument("--privacy", default="public", choices=["private", "unlisted", "public"])
     args = p.parse_args()
 
     manifests = sorted(glob.glob(os.path.join(args.out_dir, "*_manifest.json")))
