@@ -29,6 +29,12 @@ on:
       privacy:
         description: "Upload visibility: private | unlisted | public"
         default: "public"
+      shorts:
+        description: "Test only: number of Shorts (0 = full daily batch)"
+        default: "0"
+      longs:
+        description: "Test only: number of 12h long-forms (0 = full daily batch)"
+        default: "0"
 
 # One production run at a time so a slow long-form render can't overlap the next day.
 concurrency:
@@ -56,10 +62,18 @@ jobs:
           pip install -r requirements.txt
           sudo apt-get update && sudo apt-get install -y ffmpeg
 
-      - name: Produce the day's batch (3 musics x 12h long + 3 Shorts) + QC
+      - name: Produce videos + QC (full daily batch, or a custom test batch)
         run: |
-          python scripts/produce.py --daily \
-            --hours "${{ github.event.inputs.hours || 12 }}" --out-dir out
+          SHORTS="${{ github.event.inputs.shorts || 0 }}"
+          LONGS="${{ github.event.inputs.longs || 0 }}"
+          HOURS="${{ github.event.inputs.hours || 12 }}"
+          if [ "$SHORTS" != "0" ] || [ "$LONGS" != "0" ]; then
+            echo "Test batch: $LONGS long(s) + $SHORTS short(s)"
+            python scripts/produce.py --shorts "$SHORTS" --longs "$LONGS" \
+              --hours "$HOURS" --out-dir out
+          else
+            python scripts/produce.py --daily --hours "$HOURS" --out-dir out
+          fi
 
       - name: Show queue manifests
         run: |

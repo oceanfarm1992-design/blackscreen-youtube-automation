@@ -140,19 +140,35 @@ def main():
                    help=f"produce the day's batch: {T.DAILY_COUNT} musics x (12h long + Short)")
     p.add_argument("--count", type=int, default=T.DAILY_COUNT,
                    help="number of musics per day for --daily")
+    p.add_argument("--shorts", type=int, default=0,
+                   help="test batch: produce Shorts for the first N of today's musics")
+    p.add_argument("--longs", type=int, default=0,
+                   help="test batch: produce 12h long-forms for the first M of today's musics")
     p.add_argument("--hours", type=int, default=T.LONG_HOURS_DEFAULT)
     p.add_argument("--seed", type=int, default=None, help="defaults to YYYYMMDD")
     p.add_argument("--out-dir", default="out")
     args = p.parse_args()
 
-    if not args.daily and not args.format:
-        p.error("either --daily or --format is required")
+    if not args.daily and not args.format and not (args.shorts or args.longs):
+        p.error("give --daily, --format, or --shorts/--longs")
 
     seed = args.seed if args.seed is not None else int(date.today().strftime("%Y%m%d"))
     os.makedirs(args.out_dir, exist_ok=True)
 
     results = []
-    if args.daily:
+    if args.shorts or args.longs:
+        # Custom test batch: M long-forms + N Shorts from today's rotation.
+        need = max(args.shorts, args.longs, 1)
+        selection = T.daily_selection(count=max(need, T.DAILY_COUNT))
+        print(f"Test batch: {args.longs} long(s) + {args.shorts} short(s) from: "
+              + ", ".join(t["key"] for t in selection[:need]))
+        for i in range(args.longs):
+            results.append(produce_one(selection[i], "long", args.out_dir, args.hours,
+                                       seed + i * 10))
+        for i in range(args.shorts):
+            results.append(produce_one(selection[i], "short", args.out_dir, args.hours,
+                                       seed + i * 10 + 1))
+    elif args.daily:
         # N different musics per day (DAILY_COUNT); each gets a 12h long + a Short.
         selection = T.daily_selection(count=args.count)
         print(f"Daily batch ({len(selection)} musics x long+short): "
