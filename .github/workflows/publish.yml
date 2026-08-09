@@ -1,18 +1,17 @@
 name: daily-produce
 
 # Produces "Meditated Sleeping" videos, ONE per run, spread across the day so runs
-# never overlap. 6 assets/day = 3 musics x (10h long-form 1920x1080 + 59s Short
-# 1080x1920), all on the same black #0D0D0D branded frame + thumbnail.
+# never overlap. 6 assets/day = 5 long-forms (10h, 1920x1080) + 1 Short (59s,
+# 1080x1920), each a different music, on the black #0D0D0D branded frame.
 #
 # The 6 runs fire ~3.8h apart (00:00, 03:48, 07:36, 11:24, 15:12, 19:00 UTC). Each
-# cron maps to a "slot" 0..5: slot//2 = which music, even=long / odd=short.
-# Musics rotate daily through the whole library (rain, waterfall, forest, sleeping,
-# indian, romantic, romantic_night) based on the date.
+# cron maps to a "slot" 0..5: slots 0-4 = long-forms, slot 5 = the Short.
+# Musics rotate daily through the whole 11-theme library based on the date.
 # Runs on a PUBLIC repo so standard-runner minutes are free and unmetered.
 #
-# YouTube quota: the Data API default is 10,000 units/day and each upload costs
-# 1,600 units. 6 uploads/day = 9,600 units, within the free quota. (Raise
-# DAILY_COUNT in themes.py only after a quota increase, or uploads will fail.)
+# YouTube quota: default 10,000 units/day; upload = 1,600, thumbnail = 50. Longs
+# set a custom thumbnail, Shorts don't -> 5*(1650) + 1*(1600) = 9,850 units/day,
+# within the free quota. (Change LONGS/SHORTS_PER_DAY in themes.py with care.)
 #
 # Optional repo Secrets (Settings -> Secrets and variables -> Actions). If present,
 # the day's videos are uploaded to the channel as PUBLIC. Without them, the assets

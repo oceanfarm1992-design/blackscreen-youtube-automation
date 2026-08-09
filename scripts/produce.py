@@ -117,11 +117,16 @@ def produce_one(theme, fmt, out_dir, hours, seed):
         run([sys.executable, mm, "--theme", key, "--format", "long", "--hours", str(hours),
              "--out", meta])
 
-    # Prefer the per-theme clickable thumbnail (scenic + headline) for long-form;
-    # fall back to the plain branded thumbnail if one isn't present.
-    gen_thumb = os.path.join(THUMBS_GEN, f"{key}.png")
-    src_thumb = gen_thumb if (fmt == "long" and os.path.exists(gen_thumb)) else THUMBNAIL
-    shutil.copyfile(src_thumb, thumb)
+    # Long-form gets the per-theme clickable thumbnail (scenic + headline).
+    # Shorts use an auto-selected video frame — skip the custom thumbnail to save
+    # API quota (thumbnails.set costs 50 units and Shorts barely use them).
+    if fmt == "long":
+        gen_thumb = os.path.join(THUMBS_GEN, f"{key}.png")
+        src_thumb = gen_thumb if os.path.exists(gen_thumb) else THUMBNAIL
+        shutil.copyfile(src_thumb, thumb)
+        thumbnail_rel = os.path.relpath(thumb, ROOT)
+    else:
+        thumbnail_rel = None
     report = qc(fmt, video, hours)
 
     manifest = {
@@ -130,7 +135,7 @@ def produce_one(theme, fmt, out_dir, hours, seed):
         "theme_name": theme["name"],
         "format": fmt,
         "video": os.path.relpath(video, ROOT),
-        "thumbnail": os.path.relpath(thumb, ROOT),
+        "thumbnail": thumbnail_rel,
         "metadata": os.path.relpath(meta, ROOT),
         "qc": report,
         "status": "queued" if not report["problems"] else "qc_failed",
@@ -175,11 +180,12 @@ def main():
 
     results = []
     if args.slot is not None:
-        # One video per run, so the 6 daily assets are spread out (never overlap).
-        # slot 0..5 -> music = slot//2, format = long (even) / short (odd).
-        selection = T.daily_selection()
-        theme = selection[(args.slot // 2) % len(selection)]
-        fmt = "long" if args.slot % 2 == 0 else "short"
+        # One video per run, so the day's uploads are spread out (never overlap).
+        # slots 0..LONGS_PER_DAY-1 = long-forms; remaining slots = Shorts.
+        # Each slot maps to a different music.
+        selection = T.daily_selection(count=T.DAILY_COUNT)
+        theme = selection[args.slot % len(selection)]
+        fmt = "long" if args.slot < T.LONGS_PER_DAY else "short"
         print(f"Slot {args.slot}: {theme['key']} {fmt}")
         results.append(produce_one(theme, fmt, args.out_dir, args.hours, seed + args.slot))
     elif args.shorts or args.longs:
@@ -195,14 +201,16 @@ def main():
             results.append(produce_one(selection[i], "short", args.out_dir, args.hours,
                                        seed + i * 10 + 1))
     elif args.daily:
-        # N different musics per day (DAILY_COUNT); each gets a 12h long + a Short.
-        selection = T.daily_selection(count=args.count)
-        print(f"Daily batch ({len(selection)} musics x long+short): "
-              + ", ".join(t["key"] for t in selection))
-        for i, theme in enumerate(selection):
-            for j, fmt in enumerate(["long", "short"]):
-                results.append(produce_one(theme, fmt, args.out_dir, args.hours,
-                                           seed + i * 10 + j))
+        # LONGS_PER_DAY long-forms + SHORTS_PER_DAY Shorts, each a different music.
+        selection = T.daily_selection(count=T.DAILY_COUNT)
+        longs = selection[:T.LONGS_PER_DAY]
+        shorts = selection[T.LONGS_PER_DAY:T.LONGS_PER_DAY + T.SHORTS_PER_DAY]
+        print("Daily batch: " + ", ".join(t["key"] for t in longs) + " (long) + "
+              + ", ".join(t["key"] for t in shorts) + " (short)")
+        for i, theme in enumerate(longs):
+            results.append(produce_one(theme, "long", args.out_dir, args.hours, seed + i))
+        for i, theme in enumerate(shorts):
+            results.append(produce_one(theme, "short", args.out_dir, args.hours, seed + 100 + i))
     else:
         theme = T.resolve_theme(args.theme)
         formats = ["short", "long"] if args.format == "both" else [args.format]

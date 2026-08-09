@@ -24,10 +24,13 @@ ANCHOR = date(2026, 8, 5)
 # 10h (not 12h) — YouTube rejected exactly-12h uploads as "too long".
 LONG_HOURS_DEFAULT = 10
 
-# How many different musics to publish per day (each gets a 12h long + a Short).
-# 3 musics = 6 uploads/day = 9,600 API units, within the free 10,000/day quota
-# (each YouTube upload costs 1,600 units). Raise only with a quota increase.
-DAILY_COUNT = 3
+# Daily publishing plan, spread across 6 scheduled runs (one video each):
+#   LONGS_PER_DAY long-forms + SHORTS_PER_DAY Shorts, each a different music.
+# Quota: 5 longs (1600 insert + 50 thumbnail) + 1 short (1600, no thumbnail)
+#        = 9,850 units/day, within the free 10,000/day YouTube API quota.
+LONGS_PER_DAY = 5
+SHORTS_PER_DAY = 1
+DAILY_COUNT = LONGS_PER_DAY + SHORTS_PER_DAY  # distinct musics used per day
 
 # Ordered rotation. `synth` names a function in generate_theme_audio.py.
 THEMES = [

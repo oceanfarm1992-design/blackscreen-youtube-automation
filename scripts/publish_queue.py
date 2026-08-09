@@ -46,22 +46,24 @@ def main():
 
         meta = json.load(open(os.path.join(ROOT, man["metadata"]), encoding="utf-8"))
         video = os.path.join(ROOT, man["video"])
-        thumb = os.path.join(ROOT, man["thumbnail"])
 
         print(f"Uploading {man['theme']} {man['format']} as {args.privacy}: {meta['title']}")
         video_id = U.upload_video(
             youtube, video, meta["title"], meta["description"], meta.get("tags", []),
             category_id=meta.get("categoryId", "10"), privacy=args.privacy,
         )
-        # Custom thumbnails require a verified channel (youtube.com/verify). If that's
-        # not enabled the API returns 403 — don't fail the run over an optional extra;
-        # the branded video frame already serves as the auto-thumbnail.
-        try:
-            U.set_thumbnail(youtube, video_id, thumb)
-            man["thumbnail_status"] = "set"
-        except Exception as e:
-            man["thumbnail_status"] = "skipped"
-            print(f"  ! custom thumbnail not set (needs a verified channel): {e}")
+        # Shorts have no custom thumbnail (thumbnail=None) — skip to save API quota.
+        # Custom thumbnails also require a verified channel; if not enabled the API
+        # returns 403 — don't fail the run over an optional extra.
+        if man.get("thumbnail"):
+            try:
+                U.set_thumbnail(youtube, video_id, os.path.join(ROOT, man["thumbnail"]))
+                man["thumbnail_status"] = "set"
+            except Exception as e:
+                man["thumbnail_status"] = "skipped"
+                print(f"  ! custom thumbnail not set (needs a verified channel): {e}")
+        else:
+            man["thumbnail_status"] = "none"
 
         man["video_id"] = video_id
         man["status"] = "uploaded_private" if args.privacy == "private" else f"uploaded_{args.privacy}"
