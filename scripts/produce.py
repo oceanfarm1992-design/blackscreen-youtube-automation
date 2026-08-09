@@ -34,6 +34,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 BRAND = os.path.join(ROOT, "assets", "branding")
 THUMBNAIL = os.path.join(BRAND, "thumbnail_1280x720.png")
+THUMBS_GEN = os.path.join(ROOT, "assets", "thumbnails", "gen")  # per-theme clickable thumbnails
 FRAME_16x9 = os.path.join(BRAND, "brand_16x9.png")
 FRAME_9x16 = os.path.join(BRAND, "brand_9x16.png")
 
@@ -107,7 +108,11 @@ def produce_one(theme, fmt, out_dir, hours, seed):
         run([sys.executable, mm, "--theme", key, "--format", "long", "--hours", str(hours),
              "--out", meta])
 
-    shutil.copyfile(THUMBNAIL, thumb)
+    # Prefer the per-theme clickable thumbnail (scenic + headline) for long-form;
+    # fall back to the plain branded thumbnail if one isn't present.
+    gen_thumb = os.path.join(THUMBS_GEN, f"{key}.png")
+    src_thumb = gen_thumb if (fmt == "long" and os.path.exists(gen_thumb)) else THUMBNAIL
+    shutil.copyfile(src_thumb, thumb)
     report = qc(fmt, video, hours)
 
     manifest = {
