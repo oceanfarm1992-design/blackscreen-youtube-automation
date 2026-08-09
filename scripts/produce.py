@@ -94,15 +94,24 @@ def produce_one(theme, fmt, out_dir, hours, seed):
     mv = os.path.join(HERE, "make_video.py")
     mm = os.path.join(HERE, "make_metadata.py")
 
+    # Optional wellness frequency layers (Solfeggio/432 tone, brainwave beat, bowl).
+    freq = []
+    if theme.get("tone"):
+        freq += ["--tone", str(theme["tone"])]
+    if theme.get("beat"):
+        freq += ["--beat", str(theme["beat"]), "--beat-type", theme.get("beat_type", "binaural")]
+    if theme.get("bowl"):
+        freq += ["--bowl"]
+
     if fmt == "short":
         run([sys.executable, gta, "--theme", theme["synth"], "--seconds", str(SHORT_SECONDS),
-             "--seed", str(seed), "--out", audio])
+             "--seed", str(seed), "--out", audio] + freq)
         run([sys.executable, mv, "--audio", audio, "--background", FRAME_9x16,
              "--duration-seconds", str(SHORT_SECONDS), "--fps", "24", "--out", video])
         run([sys.executable, mm, "--theme", key, "--format", "short", "--out", meta])
     else:
         run([sys.executable, gta, "--theme", theme["synth"], "--loop-seconds", str(LONG_LOOP_SECONDS),
-             "--seed", str(seed), "--out", audio])
+             "--seed", str(seed), "--out", audio] + freq)
         run([sys.executable, mv, "--audio", audio, "--background", FRAME_16x9,
              "--duration-hours", str(hours), "--fps", "1", "--out", video])
         run([sys.executable, mm, "--theme", key, "--format", "long", "--hours", str(hours),

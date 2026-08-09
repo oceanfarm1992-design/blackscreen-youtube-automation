@@ -162,6 +162,81 @@ THEMES = [
             "mood music", "chill music", "relaxing music", "black screen",
         ],
     },
+    {
+        "key": "gamma_focus",
+        "name": "40 Hz Gamma Focus",
+        "synth": "none",
+        "tone": "200", "beat": "gamma", "beat_type": "binaural",
+        "emoji": "\U0001F9E0",  # 🧠
+        "short_title": "40 Hz Gamma Focus Music \U0001F9E0 Study & Concentration #shorts",
+        "long_title": "40 Hz Gamma Binaural Beats \U0001F9E0 {hours} Hours Focus, Study & Concentration | Black Screen",
+        "description": (
+            "40 Hz gamma binaural beats to support deep focus, studying, reading, and "
+            "concentration. Use headphones for the binaural effect. Black screen, "
+            "distraction-free."
+        ),
+        "tags": [
+            "40 hz", "gamma binaural beats", "binaural beats focus", "focus music",
+            "concentration music", "study music", "deep focus", "binaural beats study",
+            "brain waves", "productivity music", "gamma waves", "black screen",
+        ],
+    },
+    {
+        "key": "528hz_sleep",
+        "name": "528 Hz Sleep Music",
+        "synth": "sleeping",
+        "tone": "528", "beat": "delta", "beat_type": "binaural",
+        "emoji": "\U00002728",  # ✨
+        "short_title": "528 Hz Sleep Music \U00002728 Solfeggio Deep Sleep #shorts",
+        "long_title": "528 Hz Sleep Music \U00002728 {hours} Hours Solfeggio Tone for Deep Sleep | Black Screen",
+        "description": (
+            "528 Hz Solfeggio tone blended with warm sleep music and gentle delta-rate "
+            "binaural beats for deep, restful sleep. Use headphones for the binaural "
+            "effect. Black screen."
+        ),
+        "tags": [
+            "528 hz", "528 hz music", "solfeggio frequencies", "528 hz sleep",
+            "sleep music", "deep sleep music", "solfeggio 528", "healing frequency",
+            "meditation music", "delta waves", "binaural beats sleep", "black screen",
+        ],
+    },
+    {
+        "key": "delta_sleep",
+        "name": "Delta Waves Sleep",
+        "synth": "sleeping",
+        "tone": "110", "beat": "delta", "beat_type": "binaural",
+        "emoji": "\U0001F4A4",  # 💤
+        "short_title": "Delta Waves Sleep \U0001F4A4 Binaural Beats for Deep Sleep #shorts",
+        "long_title": "Delta Waves \U0001F4A4 {hours} Hours Binaural Beats for Deep Sleep | Black Screen",
+        "description": (
+            "Deep delta-wave binaural beats with warm ambient sleep music to help you "
+            "fall into deep, restorative sleep. Use headphones for the binaural effect. "
+            "Black screen."
+        ),
+        "tags": [
+            "delta waves", "binaural beats sleep", "deep sleep music", "delta waves sleep",
+            "sleep music", "binaural beats", "brain waves", "meditation music",
+            "insomnia relief music", "relaxing music", "black screen", "healing music",
+        ],
+    },
+    {
+        "key": "432hz_relax",
+        "name": "432 Hz Relaxing Music",
+        "synth": "sleeping",
+        "tone": "432",
+        "emoji": "\U0001F338",  # 🌸
+        "short_title": "432 Hz Music \U0001F338 Relaxing 432 Hz for Sleep #shorts",
+        "long_title": "432 Hz Music \U0001F338 {hours} Hours Relaxing 432 Hz for Sleep & Calm | Black Screen",
+        "description": (
+            "Warm, relaxing music tuned to 432 Hz for sleep, calm, and meditation. "
+            "Soothing tones to help unwind the mind and body. Black screen."
+        ),
+        "tags": [
+            "432 hz", "432 hz music", "432 hz sleep", "relaxing music", "sleep music",
+            "meditation music", "calm music", "healing frequency", "432 hz meditation",
+            "deep sleep music", "black screen", "spa music",
+        ],
+    },
 ]
 
 BRAND_NAME = "Meditated Sleeping"
