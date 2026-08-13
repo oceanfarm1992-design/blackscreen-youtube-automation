@@ -24,12 +24,20 @@ from googleapiclient.http import MediaFileUpload
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 
 
-def get_service():
+def get_service(prefix="YT"):
+    """Build a YouTube service from a set of env-var credentials.
+
+    `prefix` selects which OAuth project's secrets to use:
+      "YT"        -> YT_CLIENT_ID / YT_CLIENT_SECRET / YT_REFRESH_TOKEN   (default)
+      "YT_SHORTS" -> YT_SHORTS_* ...  (a separate Cloud project for Shorts, so
+                     Short uploads draw on their own 10,000-unit/day quota and
+                     never touch the long-form project's quota)
+    """
     creds = Credentials(
         token=None,
-        refresh_token=os.environ["YT_REFRESH_TOKEN"],
-        client_id=os.environ["YT_CLIENT_ID"],
-        client_secret=os.environ["YT_CLIENT_SECRET"],
+        refresh_token=os.environ[f"{prefix}_REFRESH_TOKEN"],
+        client_id=os.environ[f"{prefix}_CLIENT_ID"],
+        client_secret=os.environ[f"{prefix}_CLIENT_SECRET"],
         token_uri="https://oauth2.googleapis.com/token",
         scopes=SCOPES,
     )

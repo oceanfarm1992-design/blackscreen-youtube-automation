@@ -11,7 +11,12 @@ if the token is ever revoked — tokens issued under Testing status do not
 retroactively become long-lived after publishing.
 
 Usage:
-    python get_refresh_token.py --client-secret client_secret.json
+    # main project (long-forms) -> YT_* secrets
+    python get_refresh_token.py --client-secret client_secret.json --set-secrets
+
+    # 2nd project (Shorts) -> YT_SHORTS_* secrets
+    python get_refresh_token.py --client-secret shorts_client_secret.json \
+        --prefix YT_SHORTS --set-secrets
 """
 import argparse
 import shutil
@@ -25,6 +30,9 @@ SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--client-secret", required=True)
+    p.add_argument("--prefix", default="YT",
+                   help="secret-name prefix: 'YT' for the main project (long-forms), "
+                        "'YT_SHORTS' for the 2nd project (Shorts). Default: YT")
     p.add_argument("--set-secrets", action="store_true",
                    help="set all 3 GitHub Actions secrets directly via gh (no copy-paste, "
                         "guarantees client id/secret/token all come from this same client)")
@@ -34,9 +42,9 @@ def main():
     creds = flow.run_local_server(port=0)
 
     triples = [
-        ("YT_CLIENT_ID", creds.client_id),
-        ("YT_CLIENT_SECRET", creds.client_secret),
-        ("YT_REFRESH_TOKEN", creds.refresh_token),
+        (f"{args.prefix}_CLIENT_ID", creds.client_id),
+        (f"{args.prefix}_CLIENT_SECRET", creds.client_secret),
+        (f"{args.prefix}_REFRESH_TOKEN", creds.refresh_token),
     ]
 
     if args.set_secrets:

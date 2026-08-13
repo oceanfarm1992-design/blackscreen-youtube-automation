@@ -1,32 +1,46 @@
 name: daily-produce
 
 # Produces "Meditated Sleeping" videos, ONE per run, spread across the day so runs
-# never overlap. 6 assets/day = 5 long-forms (10h, 1920x1080) + 1 Short (59s,
-# 1080x1920), each a different music, on the black #0D0D0D branded frame.
+# never overlap. 12 assets/day = 6 long-forms (10h, 1920x1080) + 6 Shorts (59s,
+# 1080x1920), on the black #0D0D0D branded frame.
 #
-# The 6 runs fire ~3.8h apart (00:00, 03:48, 07:36, 11:24, 15:12, 19:00 UTC). Each
-# cron maps to a "slot" 0..5: slots 0-4 = long-forms, slot 5 = the Short.
-# Musics rotate daily through the whole 11-theme library based on the date.
-# Runs on a PUBLIC repo so standard-runner minutes are free and unmetered.
+# The 12 runs fire every 2h, alternating long/short. Each cron maps to a "slot"
+# 0..11: slots 0-5 = long-forms, slots 6-11 = the Shorts (see produce.py --slot).
+# Musics rotate through the whole theme library in a continuous cycle (each
+# video takes the next theme; wraps to the start after the last), so every
+# day's 12 videos are distinct. Runs on a PUBLIC repo so standard-runner
+# minutes are free and unmetered.
 #
-# YouTube quota: default 10,000 units/day; upload = 1,600, thumbnail = 50. Longs
-# set a custom thumbnail, Shorts don't -> 5*(1650) + 1*(1600) = 9,850 units/day,
-# within the free quota. (Change LONGS/SHORTS_PER_DAY in themes.py with care.)
+# YouTube quota: 10,000 units/day PER Cloud project; upload = 1,600, thumbnail = 50.
+# Uploads are split across TWO projects so neither is exceeded:
+#   - Long-forms -> main project:      6 * (1600 + 50) = 9,900 / 10,000  (TIGHT)
+#   - Shorts     -> YT_SHORTS project: 6 * 1600        = 9,600 / 10,000
+# publish_queue.py routes each upload by format. (Change LONGS/SHORTS_PER_DAY in
+# themes.py with care -- keep each project's daily total under 10,000.)
 #
 # Optional repo Secrets (Settings -> Secrets and variables -> Actions). If present,
 # the day's videos are uploaded to the channel as PUBLIC. Without them, the assets
 # are produced and saved as run artifacts only. Use the workflow_dispatch "privacy"
 # input to override to private/unlisted for a manual run.
-#   YT_CLIENT_ID, YT_CLIENT_SECRET, YT_REFRESH_TOKEN  - from the one-time OAuth setup
+#   YT_CLIENT_ID, YT_CLIENT_SECRET, YT_REFRESH_TOKEN        - main OAuth project (longs)
+#   YT_SHORTS_CLIENT_ID, YT_SHORTS_CLIENT_SECRET,
+#   YT_SHORTS_REFRESH_TOKEN                                 - 2nd OAuth project (Shorts).
+#     If absent, Shorts fall back to the main project (watch the combined quota).
 
 on:
   schedule:
-    - cron: "0 0 * * *"     # slot 0  00:00 UTC
-    - cron: "48 3 * * *"    # slot 1  03:48 UTC
-    - cron: "36 7 * * *"    # slot 2  07:36 UTC
-    - cron: "24 11 * * *"   # slot 3  11:24 UTC
-    - cron: "12 15 * * *"   # slot 4  15:12 UTC
-    - cron: "0 19 * * *"    # slot 5  19:00 UTC
+    - cron: "0 0 * * *"     # slot 0   00:00 UTC  long
+    - cron: "0 2 * * *"     # slot 6   02:00 UTC  short
+    - cron: "0 4 * * *"     # slot 1   04:00 UTC  long
+    - cron: "0 6 * * *"     # slot 7   06:00 UTC  short
+    - cron: "0 8 * * *"     # slot 2   08:00 UTC  long
+    - cron: "0 10 * * *"    # slot 8   10:00 UTC  short
+    - cron: "0 12 * * *"    # slot 3   12:00 UTC  long
+    - cron: "0 14 * * *"    # slot 9   14:00 UTC  short
+    - cron: "0 16 * * *"    # slot 4   16:00 UTC  long
+    - cron: "0 18 * * *"    # slot 10  18:00 UTC  short
+    - cron: "0 20 * * *"    # slot 5   20:00 UTC  long
+    - cron: "0 22 * * *"    # slot 11  22:00 UTC  short
   workflow_dispatch:
     inputs:
       hours:
@@ -55,6 +69,9 @@ jobs:
       YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
       YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
       YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+      YT_SHORTS_CLIENT_ID: ${{ secrets.YT_SHORTS_CLIENT_ID }}
+      YT_SHORTS_CLIENT_SECRET: ${{ secrets.YT_SHORTS_CLIENT_SECRET }}
+      YT_SHORTS_REFRESH_TOKEN: ${{ secrets.YT_SHORTS_REFRESH_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -73,11 +90,17 @@ jobs:
         run: |
           case "${{ github.event.schedule }}" in
             "0 0 * * *")   echo "slot=0" >> "$GITHUB_OUTPUT" ;;
-            "48 3 * * *")  echo "slot=1" >> "$GITHUB_OUTPUT" ;;
-            "36 7 * * *")  echo "slot=2" >> "$GITHUB_OUTPUT" ;;
-            "24 11 * * *") echo "slot=3" >> "$GITHUB_OUTPUT" ;;
-            "12 15 * * *") echo "slot=4" >> "$GITHUB_OUTPUT" ;;
-            "0 19 * * *")  echo "slot=5" >> "$GITHUB_OUTPUT" ;;
+            "0 4 * * *")   echo "slot=1" >> "$GITHUB_OUTPUT" ;;
+            "0 8 * * *")   echo "slot=2" >> "$GITHUB_OUTPUT" ;;
+            "0 12 * * *")  echo "slot=3" >> "$GITHUB_OUTPUT" ;;
+            "0 16 * * *")  echo "slot=4" >> "$GITHUB_OUTPUT" ;;
+            "0 20 * * *")  echo "slot=5" >> "$GITHUB_OUTPUT" ;;
+            "0 2 * * *")   echo "slot=6" >> "$GITHUB_OUTPUT" ;;
+            "0 6 * * *")   echo "slot=7" >> "$GITHUB_OUTPUT" ;;
+            "0 10 * * *")  echo "slot=8" >> "$GITHUB_OUTPUT" ;;
+            "0 14 * * *")  echo "slot=9" >> "$GITHUB_OUTPUT" ;;
+            "0 18 * * *")  echo "slot=10" >> "$GITHUB_OUTPUT" ;;
+            "0 22 * * *")  echo "slot=11" >> "$GITHUB_OUTPUT" ;;
             *)             echo "slot=" >> "$GITHUB_OUTPUT" ;;
           esac
 
@@ -104,7 +127,7 @@ jobs:
           for m in out/*_manifest.json; do echo "--- $m ---"; cat "$m"; echo; done
 
       - name: Upload to YouTube as PUBLIC (only if secrets are set)
-        if: ${{ env.YT_REFRESH_TOKEN != '' }}
+        if: ${{ env.YT_REFRESH_TOKEN != '' || env.YT_SHORTS_REFRESH_TOKEN != '' }}
         run: |
           python scripts/publish_queue.py --out-dir out --privacy "${{ github.event.inputs.privacy || 'public' }}"
 

@@ -26,6 +26,12 @@ if hasattr(sys.stdout, "reconfigure"):
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+def _shorts_project_configured():
+    """True only if a full second Cloud project is set up for Shorts."""
+    return all(os.environ.get(f"YT_SHORTS_{k}")
+               for k in ("CLIENT_ID", "CLIENT_SECRET", "REFRESH_TOKEN"))
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--out-dir", default="out")
@@ -37,7 +43,19 @@ def main():
         print(f"No manifests found in {args.out_dir}; nothing to publish.")
         return
 
-    youtube = U.get_service()
+    # Shorts upload through a separate Cloud project (its own quota) when its
+    # secrets are present; otherwise they fall back to the main project so the
+    # pipeline keeps working unchanged until the 2nd project is configured.
+    use_shorts_project = _shorts_project_configured()
+    services = {}  # prefix -> built service, so each project authenticates once
+
+    def service_for(fmt):
+        prefix = "YT_SHORTS" if (fmt == "short" and use_shorts_project) else "YT"
+        if prefix not in services:
+            services[prefix] = U.get_service(prefix)
+            print(f"[auth] {fmt} uploads -> {prefix} project")
+        return services[prefix]
+
     for mpath in manifests:
         man = json.load(open(mpath, encoding="utf-8"))
         if man.get("status") != "queued":
@@ -46,6 +64,7 @@ def main():
 
         meta = json.load(open(os.path.join(ROOT, man["metadata"]), encoding="utf-8"))
         video = os.path.join(ROOT, man["video"])
+        youtube = service_for(man["format"])
 
         print(f"Uploading {man['theme']} {man['format']} as {args.privacy}: {meta['title']}")
         video_id = U.upload_video(
