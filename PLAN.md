@@ -1,9 +1,11 @@
 # Rollout Plan — Meditated Sleeping Production Pipeline
 
-The **code is done and verified**: the daily workflow produces the day's batch — **3
-musics × (10h long-form + 59s Short) = 6 videos**, one per run ~3.8h apart — brands them `#0D0D0D`, writes SEO
-metadata, and QCs durations. What remains is optional account setup so the videos can be
-uploaded to your channel.
+The **code is done and verified**: the daily workflow produces the day's batch — **6
+long-forms (10h) + 6 Shorts (59s) = 12 videos**, one per run every 2h — brands them
+`#0D0D0D`, writes SEO metadata, and QCs durations. Long-forms upload through the main Cloud
+project; Shorts upload through a **separate Cloud project** (`YT_SHORTS_*`) so each project
+stays under its own 10,000-unit/day quota. What remains is optional account setup so the
+videos can be uploaded to your channel.
 
 Legend: 🤖 = automated · 🙋 = you do it once
 
@@ -50,42 +52,54 @@ Repo → **Settings → Secrets and variables → Actions**. Add the three value
 
 | Secret | Value |
 |---|---|
-| `YT_CLIENT_ID` | from the OAuth client |
-| `YT_CLIENT_SECRET` | from the OAuth client |
+| `YT_CLIENT_ID` | from the main OAuth client (long-forms) |
+| `YT_CLIENT_SECRET` | from the main OAuth client |
 | `YT_REFRESH_TOKEN` | the minted long-lived token |
+| `YT_SHORTS_CLIENT_ID` | from the **2nd** OAuth client, Shorts project |
+| `YT_SHORTS_CLIENT_SECRET` | from the 2nd OAuth client |
+| `YT_SHORTS_REFRESH_TOKEN` | long-lived token for the same channel, 2nd project |
 
-Once these exist, the daily run uploads the day's 6 videos as **public**. No Google Sheet
+The `YT_SHORTS_*` set is **optional** — if absent, Shorts fall back to the main project
+(watch the combined quota). With it, Shorts draw on their own 10,000-unit/day quota.
+
+Once these exist, the daily run uploads the day's 12 videos as **public**. No Google Sheet
 or service account is needed — the musics are chosen by the date.
 
 ## Phase 3 — First run & verify  🙋🤖
 
 1. **Actions** tab → **daily-produce** → **Run workflow** (set hours 8–10 if you like;
    set `privacy` to `private`/`unlisted` for this run if you want to preview first).
-2. Watch the log: it produces the 3 Shorts + 3 long-forms, prints the QC manifests, and
-   (if secrets are set) uploads them.
+2. Watch the log: a manual full run produces the 6 long-forms + 6 Shorts, prints the QC
+   manifests, and (if secrets are set) uploads them.
 3. Check the videos on your channel. The default is **public** — switch the `privacy`
    input to `private` for the first run if you'd rather review before going live.
-4. The **6 daily crons** (~3.8h apart, 00:00–19:00 UTC) then run on their own, one
-   video each.
+4. The **12 daily crons** (every 2h, 00:00–22:00 UTC) then run on their own, one
+   video each — slots 0-5 long-forms, slots 6-11 Shorts.
 
 ---
 
 ## Guardrails (these decide whether the channel survives)
 
-- **API quota:** 10,000 units/day; ~1,600 per upload → **~6 uploads/day max**. The
-  6 videos/day (3 musics × long + Short) = 9,600 units, right at the free limit. Raising
-  `DAILY_COUNT` in `themes.py` beyond 3 requires a quota increase or uploads fail.
+- **API quota:** 10,000 units/day **per Cloud project**; ~1,600 per upload. Uploads are
+  split across two projects: long-forms → main project (6 × 1,650 = **9,900, tight**),
+  Shorts → `YT_SHORTS` project (6 × 1,600 = 9,600). Each stays under the free cap, but the
+  long side has only 100 units of headroom — one retry could tip it over. Raising
+  `LONGS_PER_DAY`/`SHORTS_PER_DAY` in `themes.py` must keep **each project** under 10,000.
+- **Theme library (11) < 12 slots:** one music repeats each day (as a long + a Short).
+  Add a 12th theme to `THEMES` in `themes.py` if you want all 12 distinct.
+- **Daily upload count:** 12 uploads/day may bump YouTube's per-channel daily upload limit
+  on a new/unverified channel — phone-verify the channel and ramp up if you see errors.
 - **Reused/inauthentic-content policy:** YouTube demonetizes/suspends channels posting
   near-identical high-volume content. Audio is re-synthesized each run with a date-based
   seed so no two uploads share a file; titles/descriptions vary by music. The rotation
-  spreads 7 distinct musics across days rather than repeating one.
+  cycles the whole music library in order across days rather than repeating one.
 - **7-day token expiry:** if uploads start failing ~a week after setup, the OAuth app
   slipped back to Testing — re-publish to Production and re-mint the token.
 - **Long renders:** each 10h file is ~1 GB+ and uploads slowly; each run makes one video
   and the workflow allows 90 minutes. (YouTube rejected exactly-12h uploads as "too
   long", so long-form is 10h.)
-- **Spread schedule:** 6 crons/day ~3.8h apart (00:00, 03:48, 07:36, 11:24, 15:12, 19:00
-  UTC), one video each, so renders/uploads never run simultaneously.
+- **Spread schedule:** 12 crons/day every 2h (00:00–22:00 UTC), alternating long/short,
+  one video each, so renders/uploads never run simultaneously.
 - **Auto-public:** uploads go **public** with no manual review step. Anything off (audio
   glitch, wrong metadata) is live immediately — set the `privacy` input to `private` for
   a manual test run before trusting the daily cron.
