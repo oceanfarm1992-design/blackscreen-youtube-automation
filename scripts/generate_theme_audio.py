@@ -66,6 +66,14 @@ def resolve_tone(s):
     return float(s)
 
 
+def resolve_tones(s):
+    """One or more carrier freqs: a single Solfeggio key/'432'/Hz number, or a
+    comma-separated combo like '432,528,741'. Returns a list (possibly empty)."""
+    if not s or str(s).lower() == "none":
+        return []
+    return [resolve_tone(part.strip()) for part in str(s).split(",") if part.strip()]
+
+
 def resolve_beat(s):
     """A band name ('delta'/'theta'/'alpha'/'schumann') or any Hz number -> float."""
     if not s or str(s).lower() == "none":
@@ -189,6 +197,43 @@ def synth_rain(n, rng):
     thunder = sprinkle(n, rng, count=max(1, n // (SR * 90)), make_event=_thunder_event)
     pad = pad_layer(n, rng, roots=[130.81, 196.00, 261.63])  # C3 G3 C4
     return _norm(0.7 * base + thunder + 0.5 * pad, 0.9)
+
+
+def _droplet(rng):
+    """One resonant water drop: a short 'plink' that falls in pitch (watery
+    'ploop'), plus a tiny lower body, exponential decay."""
+    dur = rng.uniform(0.10, 0.22)
+    m = int(dur * SR)
+    f0 = rng.uniform(1100, 1800)
+    f1 = f0 * rng.uniform(0.45, 0.6)
+    sweep = np.linspace(f0, f1, m)
+    ph = 2 * np.pi * np.cumsum(sweep) / SR
+    env = np.exp(-np.linspace(0, 30, m))
+    body = 0.25 * np.sin(2 * np.pi * f1 * _t(m)) * np.exp(-np.linspace(0, 18, m))
+    return env * np.sin(ph) + body
+
+
+def _slow_drops(n, rng, mean_gap=1.9):
+    """Sparse droplets with long, varied gaps so they're heard drop by drop."""
+    out = np.zeros(n)
+    pos = int(rng.uniform(0.2, mean_gap) * SR)
+    while pos < n:
+        d = _droplet(rng) * rng.uniform(0.6, 1.0)
+        e = min(n, pos + len(d))
+        out[pos:e] += d[:e - pos]
+        pos += int(rng.uniform(0.6, 1.6) * mean_gap * SR)
+    return out
+
+
+def synth_rain_drops(n, rng):
+    """Soft, gentle rain (NO thunder) with slow individual water drops on top,
+    each drop given a little reverb so it 'plinks' with air around it. The rain
+    bed is thin and quiet (a distant patter), so it reads as light rain rather
+    than a downpour, with the drops clearly on top."""
+    bed = colored_noise(n, rng, tilt=0.7, highpass=700, lowpass=4500)
+    bed *= slow_env(n, rng, rate_hz=0.08, depth=0.16)
+    drops = reverb(_norm(_slow_drops(n, rng, mean_gap=2.1), 0.8), rng, decay=2.2, mix=0.3)
+    return _norm(0.26 * bed + 1.0 * drops, 0.9)
 
 
 def synth_waterfall(n, rng):
@@ -380,6 +425,7 @@ def synth_romantic_night(n, rng):
 
 SYNTHS = {
     "rain": synth_rain,
+    "rain_drops": synth_rain_drops,
     "waterfall": synth_waterfall,
     "forest": synth_forest,
     "sleeping": synth_sleeping,
@@ -405,18 +451,50 @@ def _edge_fade(x, sec=1.5):
     return x
 
 
-def tone_drone(n, rng, freq, amp=0.22):
+def tone_drone(n, rng, freq, amp=0.22, soft=False):
     """A warm sustained tone: fundamental + soft harmonics, low-passed, breathing.
 
     Used for Solfeggio frequencies and 432 Hz tuning so they sound musical
     rather than like a raw test tone.
+
+    soft=True renders a much gentler tone for high Solfeggio carriers
+    (741/852/963 Hz) that are fatiguing as bright drones: pure fundamental plus
+    a quiet sub-octave for body, NO upper harmonics, a tight low-pass just above
+    the fundamental, and a deeper slow swell so it moves instead of staring.
     """
+    if soft:
+        out = sine(freq, n, phase=rng.uniform(0, 2 * np.pi))
+        out += 0.20 * sine(freq / 2.0, n, phase=rng.uniform(0, 2 * np.pi))  # warmth
+        out = lowpass(out, corner=freq + 150)
+        env = 0.55 + 0.45 * slow_env(n, rng, rate_hz=0.06, depth=1.0)  # breathes more
+        return amp * _norm(out) * env
     out = sine(freq, n, phase=rng.uniform(0, 2 * np.pi))
     out += 0.22 * sine(freq * 2, n, phase=rng.uniform(0, 2 * np.pi))
     out += 0.08 * sine(freq * 3, n, phase=rng.uniform(0, 2 * np.pi))
     out = lowpass(out, corner=freq * 3 + 400)
     env = 0.85 + 0.15 * slow_env(n, rng, rate_hz=0.05, depth=1.0)
     return amp * _norm(out) * env
+
+
+def reverb(x, rng, decay=2.2, mix=0.35):
+    """Cheap dark reverb (FFT convolution with a decaying, low-passed noise
+    impulse). Smears pure sine tones into a soft wash, which is the single
+    biggest thing that stops steady Solfeggio tones sounding like a test tone.
+    Works on mono (n,) or stereo (n, 2). `mix` is the wet fraction."""
+    ir_len = int(decay * SR)
+    tail = rng.standard_normal(ir_len) * np.exp(-5.0 * np.linspace(0, 1, ir_len))
+    ir = lowpass(tail, 2500)          # dark reverb tail
+    ir = ir / (np.max(np.abs(ir)) + 1e-9)
+
+    def _conv(mono):
+        nn = len(mono) + ir_len - 1
+        nf = 1 << (nn - 1).bit_length()
+        y = np.fft.irfft(np.fft.rfft(mono, nf) * np.fft.rfft(ir, nf), nf)[:len(mono)]
+        return y
+
+    wet = _conv(x) if x.ndim == 1 else np.stack([_conv(x[:, 0]), _conv(x[:, 1])], axis=1)
+    wet = _norm(wet, 0.9)
+    return (1.0 - mix) * x + mix * wet
 
 
 def binaural(n, rng, carrier, beat, amp=0.20):
@@ -518,12 +596,23 @@ def main():
     # Wellness frequency layers (all optional; combine freely with --theme)
     p.add_argument("--tone", default=None,
                    help="carrier/drone freq: a Solfeggio value "
-                        f"({'/'.join(SOLFEGGIO)}), '432', or any Hz number")
+                        f"({'/'.join(SOLFEGGIO)}), '432', any Hz number, or a "
+                        "comma-separated combo like '432,528,741'")
     p.add_argument("--beat", default=None,
                    help="brainwave rate: delta/theta/alpha/schumann, or any Hz number")
     p.add_argument("--beat-type", default="binaural", choices=["binaural", "isochronic"],
                    help="binaural needs headphones; isochronic works on speakers")
     p.add_argument("--bowl", action="store_true", help="overlay Tibetan singing-bowl strikes")
+    p.add_argument("--tone-soft", action="store_true",
+                   help="gentler tone: pure fundamental + sub-octave, no bright harmonics "
+                        "(recommended for high Solfeggio carriers 741/852/963 Hz)")
+    p.add_argument("--reverb", type=float, default=0.0,
+                   help="dark reverb wash, wet fraction 0..1 (e.g. 0.35); 0 = off. "
+                        "Softens steady tones so they don't sound like a test tone.")
+    p.add_argument("--tone-tilt", type=float, default=0.0,
+                   help="de-emphasise high carriers: per-tone gain *= (350/freq)**tilt "
+                        "for freq>350Hz. 0=off (equal). ~2 makes 741/852/963 very mild, "
+                        "~3 barely-there, while 136/432/528 stay at full level.")
     p.add_argument("--tone-gain", type=float, default=0.22)
     p.add_argument("--beat-gain", type=float, default=0.20)
     p.add_argument("--seed", type=int, default=0)
@@ -534,19 +623,35 @@ def main():
     length = args.seconds if args.seconds else args.loop_seconds
     n = int(length * SR)
 
-    carrier = resolve_tone(args.tone)
+    carriers = resolve_tones(args.tone)
+    carrier = carriers[0] if carriers else None  # primary, used for beat pairing
     beat = resolve_beat(args.beat)
     layers = []
 
-    # ---- mono bed: ambient theme + tone drone + isochronic + bowl ----
+    # ---- mono bed: ambient theme + tone drone(s) + isochronic + bowl ----
     mono = SYNTHS[args.theme](n, rng) if args.theme != "none" else np.zeros(n)
     if args.theme != "none":
         layers.append(f"theme={args.theme}")
 
     binaural_carrier = beat is not None and args.beat_type == "binaural"
-    if carrier is not None and not binaural_carrier:
-        mono = mono + tone_drone(n, rng, carrier, amp=args.tone_gain)
-        layers.append(f"tone={carrier:g}Hz")
+    # Sustained tone drones. With a binaural beat the primary carrier becomes the
+    # L/R binaural pair (added in stereo below), so only the EXTRA combo tones
+    # drone here; otherwise every carrier drones. Summed level is kept sane by
+    # scaling each tone by 1/sqrt(count).
+    drone_tones = carriers[1:] if binaural_carrier else carriers
+    if drone_tones:
+        amp_each = args.tone_gain / (len(drone_tones) ** 0.5)
+
+        def tilt_gain(freq):
+            if args.tone_tilt <= 0 or freq <= 350.0:
+                return 1.0
+            return (350.0 / freq) ** args.tone_tilt
+
+        for c in drone_tones:
+            mono = mono + tone_drone(n, rng, c, amp=amp_each * tilt_gain(c), soft=args.tone_soft)
+        label = "+".join(f"{c:g}" for c in drone_tones)
+        layers.append(f"tone={label}Hz" + (" soft" if args.tone_soft else "")
+                      + (f" tilt{args.tone_tilt:g}" if args.tone_tilt > 0 else ""))
     if beat is not None and args.beat_type == "isochronic":
         mono = mono + isochronic(n, rng, carrier or 200.0, beat, amp=args.beat_gain)
         layers.append(f"isochronic={beat:g}Hz@{carrier or 200:g}Hz")
@@ -566,6 +671,11 @@ def main():
         stereo = stereo + binaural(n, rng, carrier or 200.0, beat, amp=args.beat_gain)
         layers.append(f"binaural={beat:g}Hz@{carrier or 200:g}Hz")
     stereo = _norm(stereo, 0.9)
+
+    if args.reverb > 0:
+        stereo = reverb(stereo, rng, mix=min(args.reverb, 1.0))
+        stereo = _norm(stereo, 0.9)
+        layers.append(f"reverb={args.reverb:g}")
 
     if args.loop_seconds:
         stereo = crossfade_loop(stereo)

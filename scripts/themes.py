@@ -24,13 +24,20 @@ ANCHOR = date(2026, 8, 5)
 # 10h (not 12h) — YouTube rejected exactly-12h uploads as "too long".
 LONG_HOURS_DEFAULT = 10
 
-# Daily publishing plan, spread across 6 scheduled runs (one video each):
-#   LONGS_PER_DAY long-forms + SHORTS_PER_DAY Shorts, each a different music.
-# Quota: 5 longs (1600 insert + 50 thumbnail) + 1 short (1600, no thumbnail)
-#        = 9,850 units/day, within the free 10,000/day YouTube API quota.
-LONGS_PER_DAY = 5
-SHORTS_PER_DAY = 1
-DAILY_COUNT = LONGS_PER_DAY + SHORTS_PER_DAY  # distinct musics used per day
+# Daily publishing plan, spread across 12 scheduled runs (one video each):
+#   LONGS_PER_DAY long-forms + SHORTS_PER_DAY Shorts.
+# Quota is split across two Cloud projects so neither hits the 10,000/day cap:
+#   - Long-forms (main project):  6 x (1600 insert + 50 thumbnail) = 9,900 units
+#   - Shorts (YT_SHORTS project): 6 x 1600 (no thumbnail)          = 9,600 units
+# Both fit the free 10,000/day quota, but the long-form side is TIGHT (only 100
+# units of headroom) -- a single upload retry or extra API call would exceed it.
+# The library has >= DAILY_COUNT themes, so each day's 12 videos are all distinct
+# musics; the rotation walks the whole library in order and restarts at the end.
+# If the YT_SHORTS_* secrets are absent, Shorts fall back to the main project
+# (6*1650 + 6*1600 = 19,500) -- far over quota -- so keep the 2nd project set.
+LONGS_PER_DAY = 6
+SHORTS_PER_DAY = 6
+DAILY_COUNT = LONGS_PER_DAY + SHORTS_PER_DAY  # may exceed len(THEMES); see note above
 
 # Ordered rotation. `synth` names a function in generate_theme_audio.py.
 THEMES = [
@@ -238,6 +245,165 @@ THEMES = [
             "432 hz", "432 hz music", "432 hz sleep", "relaxing music", "sleep music",
             "meditation music", "calm music", "healing frequency", "432 hz meditation",
             "deep sleep music", "black screen", "spa music",
+        ],
+    },
+    {
+        "key": "rain_drops",
+        "name": "Soft Rain & Water Drops",
+        "synth": "rain_drops",
+        "emoji": "\U0001F4A7",  # 💧
+        "short_title": "Soft Rain & Water Drops \U0001F4A7 Gentle Rain Sounds for Sleep #shorts",
+        "long_title": "Soft Rain & Water Drops \U0001F4A7 {hours} Hours Gentle Rain for Sleep, No Thunder | Black Screen",
+        "description": (
+            "Soft, gentle rainfall with slow water drops falling one by one — no "
+            "thunder, no music, just calm rain to help you relax, focus, and fall "
+            "asleep. Let the quiet patter and gentle drips soothe you into deep, "
+            "restful sleep. Black screen."
+        ),
+        "tags": [
+            "soft rain", "gentle rain", "rain sounds for sleeping", "water drops",
+            "rain without thunder", "rain no thunder", "light rain sounds",
+            "rain sounds black screen", "calm rain", "relaxing rain", "sleep sounds",
+            "rain ambience", "deep sleep music", "black screen", "white noise",
+        ],
+    },
+    # --- Solfeggio combos & high tones: rendered soft (pure tone, no bright
+    # harmonics) + dark reverb + high-tone de-emphasis (tone_tilt) so 741/852/963
+    # sit gently under the warm 'sleeping' bed instead of piercing. ---
+    {
+        "key": "solfeggio_heal",
+        "name": "432 528 741 Hz Healing Sleep",
+        "synth": "sleeping",
+        "tone": "432,528,741", "tone_soft": True, "reverb": 0.4, "tone_tilt": 2,
+        "tone_gain": 0.11,
+        "emoji": "\U0001F319",  # 🌙
+        "short_title": "432+528+741 Hz \U0001F319 Deep Healing Sleep Music #shorts",
+        "long_title": "432 Hz + 528 Hz + 741 Hz \U0001F319 {hours} Hours Deep Healing Sleep Music, Calm & Anxiety Relief | Black Screen",
+        "description": (
+            "A gentle blend of 432 Hz, 528 Hz and 741 Hz Solfeggio tones woven into "
+            "warm sleep music for deep rest, calm, and anxiety relief. Soft and "
+            "soothing for a peaceful night's sleep. Black screen."
+        ),
+        "tags": [
+            "432 hz", "528 hz", "741 hz", "solfeggio frequencies", "solfeggio sleep",
+            "deep sleep music", "healing frequency", "anxiety relief music",
+            "meditation music", "calm music", "sleep music", "black screen",
+        ],
+    },
+    {
+        "key": "solfeggio_spirit",
+        "name": "528 741 963 Hz Body & Spirit",
+        "synth": "sleeping",
+        "tone": "528,741,963", "tone_soft": True, "reverb": 0.4, "tone_tilt": 3,
+        "tone_gain": 0.11,
+        "emoji": "\U00002728",  # ✨
+        "short_title": "528+741+963 Hz \U00002728 Body & Spirit Healing #shorts",
+        "long_title": "528 Hz + 741 Hz + 963 Hz \U00002728 {hours} Hours Body & Spirit Healing Music, Deep Sleep & Positive Energy | Black Screen",
+        "description": (
+            "528 Hz, 741 Hz and 963 Hz Solfeggio tones layered into calm sleep music "
+            "for deep rest and positive energy. High tones kept soft and subtle. "
+            "Black screen."
+        ),
+        "tags": [
+            "528 hz", "741 hz", "963 hz", "solfeggio frequencies", "positive energy",
+            "deep sleep music", "healing frequency", "meditation music",
+            "spiritual music", "sleep music", "calm music", "black screen",
+        ],
+    },
+    {
+        "key": "solfeggio_deepsleep",
+        "name": "Solfeggio + Delta Deep Sleep",
+        "synth": "sleeping",
+        "tone": "528,741,963", "tone_soft": True, "reverb": 0.4, "tone_tilt": 3,
+        "tone_gain": 0.11, "beat": "delta", "beat_type": "isochronic",
+        "emoji": "\U0001F634",  # 😴
+        "short_title": "Solfeggio + Delta Waves \U0001F634 Deep Sleep Music #shorts",
+        "long_title": "Solfeggio + Delta Waves \U0001F634 {hours} Hours Deep Sleep Meditation, Fall Asleep Fast | Black Screen",
+        "description": (
+            "Soft Solfeggio tones with gentle delta-rate pulses and warm sleep music "
+            "to help you fall asleep fast and sleep deeply through the night. Works "
+            "on speakers or headphones. Black screen."
+        ),
+        "tags": [
+            "delta waves", "solfeggio frequencies", "deep sleep music", "fall asleep fast",
+            "sleep meditation", "sleep music", "healing frequency", "meditation music",
+            "insomnia relief music", "relaxing music", "black screen", "brain waves",
+        ],
+    },
+    {
+        "key": "om_136",
+        "name": "OM 136.1 Hz Meditation",
+        "synth": "sleeping",
+        "tone": "136.1", "tone_soft": True, "reverb": 0.35, "tone_gain": 0.14,
+        "emoji": "\U0001F549",  # 🕉️
+        "short_title": "OM 136.1 Hz \U0001F549 Deep Meditation & Inner Peace #shorts",
+        "long_title": "OM 136.1 Hz \U0001F549 {hours} Hours Tibetan Om Frequency for Deep Meditation & Inner Peace | Black Screen",
+        "description": (
+            "The deep OM frequency (136.1 Hz) with warm ambient music for meditation, "
+            "inner peace, and calm. A grounding, soothing tone to quiet the mind. "
+            "Black screen."
+        ),
+        "tags": [
+            "om", "136 hz", "om frequency", "tibetan meditation", "meditation music",
+            "inner peace", "deep meditation", "chanting", "calm music", "sleep music",
+            "healing frequency", "black screen",
+        ],
+    },
+    {
+        "key": "963hz_awakening",
+        "name": "963 Hz Crown Chakra",
+        "synth": "sleeping",
+        "tone": "963", "tone_soft": True, "reverb": 0.4, "tone_tilt": 2,
+        "tone_gain": 0.11,
+        "emoji": "\U0001F30C",  # 🌌
+        "short_title": "963 Hz \U0001F30C Crown Chakra Meditation Music #shorts",
+        "long_title": "963 Hz \U0001F30C {hours} Hours Crown Chakra Music for Spiritual Awakening & Deep Meditation | Black Screen",
+        "description": (
+            "The 963 Hz crown-chakra Solfeggio tone kept soft and subtle over warm "
+            "meditation music for spiritual calm and deep relaxation. Black screen."
+        ),
+        "tags": [
+            "963 hz", "crown chakra", "solfeggio frequencies", "spiritual music",
+            "meditation music", "deep meditation", "963 hz meditation", "calm music",
+            "sleep music", "healing frequency", "black screen", "chakra healing",
+        ],
+    },
+    {
+        "key": "852hz_intuition",
+        "name": "852 Hz Third Eye",
+        "synth": "sleeping",
+        "tone": "852", "tone_soft": True, "reverb": 0.4, "tone_tilt": 2,
+        "tone_gain": 0.11,
+        "emoji": "\U0001F52E",  # 🔮
+        "short_title": "852 Hz \U0001F52E Third Eye Awakening Meditation #shorts",
+        "long_title": "852 Hz \U0001F52E {hours} Hours Awaken Intuition, Third Eye Meditation Music for Calm | Black Screen",
+        "description": (
+            "The 852 Hz Solfeggio tone, gentle and soft, over calm meditation music "
+            "to awaken intuition and settle the mind. Black screen."
+        ),
+        "tags": [
+            "852 hz", "third eye", "intuition", "solfeggio frequencies", "meditation music",
+            "852 hz meditation", "spiritual music", "calm music", "sleep music",
+            "healing frequency", "black screen", "chakra healing",
+        ],
+    },
+    {
+        "key": "741hz_clarity",
+        "name": "741 Hz Cleanse & Clarity",
+        "synth": "sleeping",
+        "tone": "741", "tone_soft": True, "reverb": 0.4, "tone_tilt": 2,
+        "tone_gain": 0.11,
+        "emoji": "\U0001F343",  # 🍃
+        "short_title": "741 Hz \U0001F343 Cleanse & Clarity Meditation #shorts",
+        "long_title": "741 Hz \U0001F343 {hours} Hours Cleanse & Clarity, Let Go of Stress | Calm Focus Music | Black Screen",
+        "description": (
+            "The 741 Hz Solfeggio tone kept soft over calm music to cleanse the mind, "
+            "release stress, and support clarity and focus. Black screen."
+        ),
+        "tags": [
+            "741 hz", "cleanse", "clarity", "solfeggio frequencies", "stress relief",
+            "741 hz meditation", "focus music", "meditation music", "calm music",
+            "sleep music", "healing frequency", "black screen",
         ],
     },
 ]
