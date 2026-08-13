@@ -44,8 +44,8 @@ on:
   workflow_dispatch:
     inputs:
       hours:
-        description: "Long-form length in hours (8-12)"
-        default: "10"
+        description: "Long-form length override (blank = per-theme: combos 3h, solo freq 8h, nature 10h)"
+        default: ""
       privacy:
         description: "Upload visibility: private | unlisted | public"
         default: "public"
@@ -109,17 +109,21 @@ jobs:
           SHORTS="${{ github.event.inputs.shorts || 0 }}"
           LONGS="${{ github.event.inputs.longs || 0 }}"
           SLOT="${{ steps.slot.outputs.slot }}"
-          HOURS="${{ github.event.inputs.hours || 10 }}"
+          HOURS="${{ github.event.inputs.hours }}"
+          # Blank HOURS -> omit --hours so produce.py uses the per-theme duration
+          # map (combos 3h, solo frequencies 8h, nature/music 10h).
+          HOURS_ARG=""
+          [ -n "$HOURS" ] && HOURS_ARG="--hours $HOURS"
           if [ "$SHORTS" != "0" ] || [ "$LONGS" != "0" ]; then
             echo "Manual test batch: $LONGS long(s) + $SHORTS short(s)"
             python scripts/produce.py --shorts "$SHORTS" --longs "$LONGS" \
-              --hours "$HOURS" --out-dir out
+              $HOURS_ARG --out-dir out
           elif [ -n "$SLOT" ]; then
             echo "Scheduled slot $SLOT"
-            python scripts/produce.py --slot "$SLOT" --hours "$HOURS" --out-dir out
+            python scripts/produce.py --slot "$SLOT" $HOURS_ARG --out-dir out
           else
             echo "Manual full daily batch"
-            python scripts/produce.py --daily --hours "$HOURS" --out-dir out
+            python scripts/produce.py --daily $HOURS_ARG --out-dir out
           fi
 
       - name: Show queue manifests

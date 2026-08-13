@@ -75,8 +75,13 @@ def qc(fmt, video_path, hours):
         if res != "1080x1920":
             problems.append(f"Short resolution {res} is not 1080x1920 (vertical)")
     else:
-        if not (8 * 3600 <= dur <= 12 * 3600):
-            problems.append(f"Long duration {dur/3600:.2f}h is outside the 8-12h window")
+        target = hours * 3600
+        if not (T.LONG_HOURS_MIN * 3600 <= dur <= 12 * 3600):
+            problems.append(f"Long duration {dur/3600:.2f}h outside the "
+                            f"{T.LONG_HOURS_MIN}-12h window")
+        elif abs(dur - target) > max(120, 0.03 * target):
+            problems.append(f"Long duration {dur/3600:.2f}h is not near the "
+                            f"target {hours}h")
         if res != "1920x1080":
             problems.append(f"Long resolution {res} is not 1920x1080")
     return {"duration_sec": round(dur, 2), "resolution": res, "problems": problems}
@@ -84,6 +89,10 @@ def qc(fmt, video_path, hours):
 
 def produce_one(theme, fmt, out_dir, hours, seed):
     key = theme["key"]
+    # Long-form length is content-matched per theme (combos 3h, solo freq 8h,
+    # nature/music 10h). An explicit --hours overrides it; otherwise use the map.
+    if fmt == "long":
+        hours = hours if hours else T.long_hours_for(key)
     stem = os.path.join(out_dir, f"{key}_{fmt}")
     audio = f"{stem}_audio.wav"
     video = f"{stem}.mp4"
@@ -175,7 +184,9 @@ def main():
     p.add_argument("--slot", type=int, default=None,
                    help="produce ONE video: slot 0..(2*DAILY_COUNT-1) of today's rotation "
                         "(even=long, odd=short); used by the spaced daily schedule")
-    p.add_argument("--hours", type=int, default=T.LONG_HOURS_DEFAULT)
+    p.add_argument("--hours", type=int, default=None,
+                   help="override long-form length; default = per-theme map "
+                        "(combos 3h, solo freq 8h, nature/music 10h)")
     p.add_argument("--seed", type=int, default=None, help="defaults to YYYYMMDD")
     p.add_argument("--out-dir", default="out")
     args = p.parse_args()

@@ -20,9 +20,26 @@ from datetime import date
 # 2026-08-05 == theme index 0 (rain). Changing this shifts the whole schedule.
 ANCHOR = date(2026, 8, 5)
 
-# Long-form target length in hours. Spec allows 8-12h; QC enforces that window.
-# 10h (not 12h) — YouTube rejected exactly-12h uploads as "too long".
+# Long-form length in hours, matched to what wins per sub-niche on YouTube:
+#   - Solfeggio COMBOS  -> 3h  : the viral combo format is a short binge series
+#   - Solo FREQUENCIES  -> 8h  : solid length, faster/safer render than 10h
+#   - Nature / music     -> 10h : all-night ambient watch-time
+# QC allows 2-12h and checks the actual render is close to the theme's target.
+# (10h max, not 12h — YouTube rejected exactly-12h uploads as "too long".)
 LONG_HOURS_DEFAULT = 10
+LONG_HOURS_MIN = 2      # QC floor for a "long-form"
+LONG_HOURS = {
+    "solfeggio_heal": 3, "solfeggio_spirit": 3, "solfeggio_deepsleep": 3,
+    "528hz_sleep": 8, "432hz_relax": 8, "delta_sleep": 8, "gamma_focus": 8,
+    "om_136": 8, "963hz_awakening": 8, "852hz_intuition": 8, "741hz_clarity": 8,
+    # rain, waterfall, forest, sleeping, indian, romantic, romantic_night,
+    # rain_drops -> LONG_HOURS_DEFAULT (10)
+}
+
+
+def long_hours_for(theme_key: str) -> int:
+    """Content-matched long-form duration for a theme (falls back to 10h)."""
+    return LONG_HOURS.get(theme_key, LONG_HOURS_DEFAULT)
 
 # Daily publishing plan, spread across 12 scheduled runs (one video each):
 #   LONGS_PER_DAY long-forms + SHORTS_PER_DAY Shorts.
