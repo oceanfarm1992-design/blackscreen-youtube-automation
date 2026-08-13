@@ -56,6 +56,11 @@ on:
         description: "Test only: number of long-forms (0 = full daily batch)"
         default: "0"
 
+# Least privilege: the auto-injected GITHUB_TOKEN only ever needs to read the
+# repo (checkout). Uploads use the YT_* secrets, not this token.
+permissions:
+  contents: read
+
 # One production run at a time so two runs can never render/upload simultaneously.
 concurrency:
   group: daily-produce

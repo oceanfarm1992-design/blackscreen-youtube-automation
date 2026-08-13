@@ -3,6 +3,9 @@ name: set-thumbnail
 # Manually set the branded custom thumbnail on an existing YouTube video.
 # Requires a verified channel and the YT_* repo secrets.
 
+permissions:
+  contents: read
+
 on:
   workflow_dispatch:
     inputs:
