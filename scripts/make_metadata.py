@@ -20,6 +20,31 @@ if hasattr(sys.stdout, "reconfigure"):
 
 CATEGORY_MUSIC = "10"
 
+# YouTube counts the combined length of all tags against a 500-char cap (and adds
+# quotes around multi-word tags). Pack to a safe 480 so we never get rejected.
+TAG_CHAR_LIMIT = 480
+
+
+def pack_tags(theme: dict, fmt: str) -> list:
+    """Theme-specific tags first (most relevant, slightly higher weight), then
+    the shared niche pool, deduped, filling up to the 500-char YouTube limit."""
+    pool = list(theme["tags"]) + T.GLOBAL_TAGS
+    if fmt == "short":
+        pool = ["shorts", "short video"] + pool  # Shorts discovery
+    tags, seen, used = [], set(), 0
+    for t in pool:
+        t = t.strip()
+        key = t.lower()
+        if not t or key in seen:
+            continue
+        cost = len(t) + (2 if " " in t else 0) + 1  # quotes for phrases + comma
+        if used + cost > TAG_CHAR_LIMIT:
+            continue
+        tags.append(t)
+        seen.add(key)
+        used += cost
+    return tags
+
 
 def build_metadata(theme: dict, fmt: str, hours: int) -> dict:
     if fmt == "short":
@@ -30,13 +55,24 @@ def build_metadata(theme: dict, fmt: str, hours: int) -> dict:
     # YouTube hard-caps titles at 100 characters.
     title = title[:100]
 
+    # Keyword-rich but natural description: a strong first line (search snippet),
+    # the theme blurb, a how-to, a "perfect for" line, then <=3 hashtags. (>15
+    # hashtags makes YouTube ignore ALL of them, so we keep exactly 3.)
+    lead = f"{hours} Hours of {theme['name']}" if fmt == "long" else theme["name"]
     hashtags = " ".join("#" + t.replace(" ", "") for t in theme["tags"][:3])
+    if fmt == "short":
+        hashtags += " #shorts"
     description = (
-        f"{theme['description']}\n\n{hashtags}"
+        f"{lead} on a calm black screen.\n\n"
+        f"{theme['description']}\n\n"
+        f"\U0001F3A7 How to use: play at a low, comfortable volume to fall asleep, "
+        f"study, meditate, or relax — leave it on all night for uninterrupted rest.\n\n"
+        f"Perfect for {T.PERFECT_FOR}.\n\n"
+        f"{hashtags}"
         + T.DESCRIPTION_FOOTER.format(brand=T.BRAND_NAME, tagline=T.BRAND_TAGLINE)
     )
 
-    tags = theme["tags"] + (["shorts"] if fmt == "short" else [])
+    tags = pack_tags(theme, fmt)
 
     return {
         "theme": theme["key"],

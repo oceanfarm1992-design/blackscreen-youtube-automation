@@ -411,6 +411,23 @@ THEMES = [
 BRAND_NAME = "Meditated Sleeping"
 BRAND_TAGLINE = "Calm. Sleep. Restore."
 
+# Broad, high-value niche tags appended to every video AFTER the theme-specific
+# ones. make_metadata dedupes and packs tags up to YouTube's 500-char total
+# limit. (Tags are a minor ranking signal — relevance > volume — but harmless.)
+GLOBAL_TAGS = [
+    "sleep music", "black screen", "relaxing music", "meditation music",
+    "deep sleep music", "calm music", "study music", "sleep sounds",
+    "healing music", "insomnia relief music", "stress relief music",
+    "sleep meditation", "relaxing sleep music", "ambient music",
+    "background music", "spa music", "music for sleeping",
+    "black screen sleep music", "sleeping music", "relaxation music",
+    "calming music", "peaceful music",
+]
+
+# Natural-language phrase for the description (NOT a keyword dump — over-stuffing
+# risks a spam flag). Kept short and readable.
+PERFECT_FOR = "sleep, studying, meditation, relaxation, yoga, spa, and stress relief"
+
 # Appended to every description.
 DESCRIPTION_FOOTER = (
     "\n\n— {brand} — {tagline}\n\n"
