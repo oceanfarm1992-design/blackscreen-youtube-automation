@@ -32,6 +32,10 @@ def get_service(prefix="YT"):
       "YT_SHORTS" -> YT_SHORTS_* ...  (a separate Cloud project for Shorts, so
                      Short uploads draw on their own 10,000-unit/day quota and
                      never touch the long-form project's quota)
+
+    No `scopes` are pinned here on purpose: the refresh then uses whatever
+    scopes the token was originally granted, so an upload-only token and a
+    broader upload+playlist token both work through the same code path.
     """
     creds = Credentials(
         token=None,
@@ -39,9 +43,35 @@ def get_service(prefix="YT"):
         client_id=os.environ[f"{prefix}_CLIENT_ID"],
         client_secret=os.environ[f"{prefix}_CLIENT_SECRET"],
         token_uri="https://oauth2.googleapis.com/token",
-        scopes=SCOPES,
     )
     return build("youtube", "v3", credentials=creds)
+
+
+def find_or_create_playlist(youtube, title, description=""):
+    """Return the id of the channel's playlist with this exact title, creating
+    it (public) if missing. playlists.list = 1 unit; insert = 50 units."""
+    req = youtube.playlists().list(part="snippet", mine=True, maxResults=50)
+    while req is not None:
+        res = req.execute()
+        for item in res.get("items", []):
+            if item["snippet"]["title"] == title:
+                return item["id"]
+        req = youtube.playlists().list_next(req, res)
+    body = {"snippet": {"title": title, "description": description},
+            "status": {"privacyStatus": "public"}}
+    created = youtube.playlists().insert(part="snippet,status", body=body).execute()
+    print(f"  created playlist: {title}")
+    return created["id"]
+
+
+def add_to_playlist(youtube, playlist_id, video_id):
+    """Append a video to a playlist (playlistItems.insert, 50 units)."""
+    youtube.playlistItems().insert(part="snippet", body={
+        "snippet": {
+            "playlistId": playlist_id,
+            "resourceId": {"kind": "youtube#video", "videoId": video_id},
+        }
+    }).execute()
 
 
 def upload_video(youtube, video_path, title, description, tags, category_id="10", privacy="public"):

@@ -18,6 +18,7 @@ import json
 import os
 import sys
 
+import themes as T
 import upload_youtube as U
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -56,6 +57,30 @@ def main():
             print(f"[auth] {fmt} uploads -> {prefix} project")
         return services[prefix]
 
+    # Auto-playlists: long-forms are added to their sub-niche playlist, routed
+    # through the YT_SHORTS project (it has the quota headroom; 50 units/add).
+    # Needs the broader "youtube" scope on that token — until it's re-minted
+    # with it, the API returns 403 and we just skip, never failing the upload.
+    playlist_ids = {}  # title -> id, resolved once per run
+
+    def add_long_to_playlist(man, video_id):
+        pl = T.playlist_for(man["theme"])
+        if not (pl and use_shorts_project):
+            man["playlist_status"] = "skipped"
+            return
+        try:
+            svc = services.get("YT_SHORTS") or U.get_service("YT_SHORTS")
+            services["YT_SHORTS"] = svc
+            if pl["title"] not in playlist_ids:
+                playlist_ids[pl["title"]] = U.find_or_create_playlist(
+                    svc, pl["title"], pl["description"])
+            U.add_to_playlist(svc, playlist_ids[pl["title"]], video_id)
+            man["playlist_status"] = pl["title"]
+            print(f"  + playlist: {pl['title']}")
+        except Exception as e:
+            man["playlist_status"] = "failed"
+            print(f"  ! playlist add skipped (token may lack the 'youtube' scope): {e}")
+
     for mpath in manifests:
         man = json.load(open(mpath, encoding="utf-8"))
         if man.get("status") != "queued":
@@ -83,6 +108,9 @@ def main():
                 print(f"  ! custom thumbnail not set (needs a verified channel): {e}")
         else:
             man["thumbnail_status"] = "none"
+
+        if man["format"] == "long":
+            add_long_to_playlist(man, video_id)
 
         man["video_id"] = video_id
         man["status"] = "uploaded_private" if args.privacy == "private" else f"uploaded_{args.privacy}"

@@ -11,10 +11,12 @@ name: daily-produce
 # day's 12 videos are distinct. Runs on a PUBLIC repo so standard-runner
 # minutes are free and unmetered.
 #
-# YouTube quota: 10,000 units/day PER Cloud project; upload = 1,600, thumbnail = 50.
-# Uploads are split across TWO projects so neither is exceeded:
-#   - Long-forms -> main project:      6 * (1600 + 50) = 9,900 / 10,000  (TIGHT)
-#   - Shorts     -> YT_SHORTS project: 6 * 1600        = 9,600 / 10,000
+# YouTube quota: 10,000 units/day PER Cloud project; upload = 1,600, thumbnail = 50,
+# playlist add = 50. Uploads are split across TWO projects so neither is exceeded:
+#   - Long-forms -> main project:      6 * (1600 + 50)      = 9,900 / 10,000 (TIGHT)
+#   - Shorts     -> YT_SHORTS project: 6 * 1600 + 6 * 50    = 9,905 / 10,000
+#     (the +6*50 is the auto-playlist adds for the day's long-forms, routed
+#      through the YT_SHORTS project because it has the headroom)
 # publish_queue.py routes each upload by format. (Change LONGS/SHORTS_PER_DAY in
 # themes.py with care -- keep each project's daily total under 10,000.)
 #

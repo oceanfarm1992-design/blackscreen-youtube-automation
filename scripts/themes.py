@@ -445,6 +445,54 @@ GLOBAL_TAGS = [
 # risks a spam flag). Kept short and readable.
 PERFECT_FOR = "sleep, studying, meditation, relaxation, yoga, spa, and stress relief"
 
+# Auto-playlists: every long-form is added to its sub-niche playlist on upload
+# (playlistItems.insert, 50 units, routed through the YT_SHORTS project which
+# has the quota headroom). Shorts are skipped — they surface via the Shorts
+# feed, where playlists add little. Playlists are found-or-created by TITLE,
+# so renaming a title here creates a NEW playlist.
+PLAYLISTS = {
+    "rain_nature": {
+        "title": "Rain & Nature Sounds for Sleep \U0001F327️",
+        "description": "Gentle rain, waterfalls, forest birdsong and calm nature "
+                       "ambience for deep sleep, study, and relaxation. Black screen.",
+        "themes": ["rain", "rain_drops", "waterfall", "forest"],
+    },
+    "deep_sleep": {
+        "title": "Deep Sleep Music \U0001F319",
+        "description": "Warm ambient sleep music, delta waves, and soothing tones "
+                       "to fall asleep fast and sleep deeply. Black screen.",
+        "themes": ["sleeping", "delta_sleep", "528hz_sleep", "432hz_relax"],
+    },
+    "solfeggio": {
+        "title": "Solfeggio & Healing Frequencies \U00002728",
+        "description": "Solfeggio tones and healing frequency blends — 432 Hz, "
+                       "528 Hz, 741 Hz, 852 Hz, 963 Hz and OM — woven into calm "
+                       "sleep music. Black screen.",
+        "themes": ["solfeggio_heal", "solfeggio_spirit", "solfeggio_deepsleep",
+                    "om_136", "963hz_awakening", "852hz_intuition", "741hz_clarity"],
+    },
+    "instrumental": {
+        "title": "Romantic & Instrumental Sleep Music \U0001F49E",
+        "description": "Smooth romantic instrumentals, Indian tanpura and flute — "
+                       "warm melodic music for sleep and unwinding. Black screen.",
+        "themes": ["romantic", "romantic_night", "indian"],
+    },
+    "focus": {
+        "title": "Focus & Study Music \U0001F3AF",
+        "description": "Gamma-wave focus tracks and calm concentration music for "
+                       "deep work and study. Black screen.",
+        "themes": ["gamma_focus"],
+    },
+}
+
+
+def playlist_for(theme_key: str) -> dict | None:
+    """The playlist definition a theme belongs to, or None."""
+    for p in PLAYLISTS.values():
+        if theme_key in p["themes"]:
+            return p
+    return None
+
 # Appended to every description.
 DESCRIPTION_FOOTER = (
     "\n\n— {brand} — {tagline}\n\n"

@@ -24,7 +24,13 @@ import subprocess
 
 from google_auth_oauthlib.flow import InstalledAppFlow
 
-SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+# upload = video uploads + thumbnails; youtube = playlist create/manage (needed
+# by the auto-playlist step). Tokens minted before playlists existed carry only
+# the upload scope and keep working for uploads — re-mint to enable playlists.
+SCOPES = [
+    "https://www.googleapis.com/auth/youtube.upload",
+    "https://www.googleapis.com/auth/youtube",
+]
 
 
 def main():
