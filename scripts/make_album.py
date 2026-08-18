@@ -46,6 +46,7 @@ FONT_CANDIDATES = [
 # Album title + accent colour per theme (accent matches the video thumbnails).
 ALBUMS = {
     "rain_drops":          ("Soft Rain & Water Drops", (60, 150, 200)),
+    "rooftop_rain":        ("Rooftop Rain & Gentle Thunder", (90, 130, 180)),
     "rain":                ("Rain Sounds for Sleep", (60, 140, 190)),
     "waterfall":           ("Waterfall Ambience", (60, 170, 190)),
     "forest":              ("Forest Sounds & Birdsong", (70, 170, 110)),

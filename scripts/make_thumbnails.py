@@ -52,6 +52,7 @@ STYLES = {
     "852hz_intuition":     (["852 Hz", "THIRD EYE"], (110, 90, 220)),
     "741hz_clarity":       (["741 Hz", "CLEANSE & CLARITY"], (70, 180, 150)),
     # already-shipped themes, for --all / --stale regeneration
+    "rooftop_rain":        (["RAIN ON ROOFTOP", "& GENTLE THUNDER"], (90, 130, 180)),
     "rain":                (["RAIN SOUNDS", "FOR SLEEPING"], (60, 140, 190)),
     "waterfall":           (["WATERFALL", "SOUNDS"], (60, 170, 190)),
     "forest":              (["FOREST", "SOUNDS"], (70, 170, 110)),

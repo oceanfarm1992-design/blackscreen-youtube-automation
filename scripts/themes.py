@@ -405,6 +405,25 @@ THEMES = [
         ],
     },
     {
+        "key": "rooftop_rain",
+        "name": "Rooftop Rain & Gentle Thunder",
+        "synth": "rain",
+        "emoji": "\U0001F3E0",  # 🏠
+        "short_title": "Rain on Rooftop \U0001F3E0 Cozy Rain & Soft Thunder #shorts",
+        "long_title": "Rain on Rooftop \U0001F3E0 {hours} Hours Cozy Rain & Gentle Thunder for Sleep | Black Screen",
+        "description": (
+            "Rain falling softly on a rooftop with gentle, distant thunder. A cozy, "
+            "intimate atmosphere to help you relax, feel safe, and drift into deep, "
+            "restful sleep. Black screen."
+        ),
+        "tags": [
+            "rain on roof", "rooftop rain", "rain sounds for sleeping", "cozy rain",
+            "gentle thunder", "rain and thunder", "rain on rooftop", "sleep sounds",
+            "rain sounds black screen", "relaxing rain", "deep sleep music",
+            "rain ambience", "calm rain", "black screen", "asmr rain",
+        ],
+    },
+    {
         "key": "741hz_clarity",
         "name": "741 Hz Cleanse & Clarity",
         "synth": "sleeping",
@@ -455,7 +474,7 @@ PLAYLISTS = {
         "title": "Rain & Nature Sounds for Sleep \U0001F327️",
         "description": "Gentle rain, waterfalls, forest birdsong and calm nature "
                        "ambience for deep sleep, study, and relaxation. Black screen.",
-        "themes": ["rain", "rain_drops", "waterfall", "forest"],
+        "themes": ["rain", "rain_drops", "rooftop_rain", "waterfall", "forest"],
     },
     "deep_sleep": {
         "title": "Deep Sleep Music \U0001F319",

@@ -39,7 +39,8 @@ FRAME_16x9 = os.path.join(BRAND, "brand_16x9.png")
 FRAME_9x16 = os.path.join(BRAND, "brand_9x16.png")
 
 SHORT_SECONDS = 59
-LONG_LOOP_SECONDS = 123  # ~2 min seamless loop, stream-looped to full length by ffmpeg
+LONG_LOOP_SECONDS = 600  # 10 min seamless loop, stream-looped to full length by ffmpeg
+CLIPS_DIR = os.path.join(ROOT, "assets", "clips")  # AI-generated clip library
 
 
 def run(cmd):
@@ -107,12 +108,24 @@ def produce_one(theme, fmt, out_dir, hours, seed):
     # bowl) plus tone-shaping (soft timbre, reverb wash, high-tone de-emphasis).
     freq = T.synth_args(theme)
 
+    has_ai_clips = os.path.isdir(os.path.join(CLIPS_DIR, key)) and any(
+        f.endswith(".wav") for f in os.listdir(os.path.join(CLIPS_DIR, key))
+    ) if os.path.isdir(os.path.join(CLIPS_DIR, key)) else False
+    bla = os.path.join(HERE, "build_long_audio.py")
+
     if fmt == "short":
         run([sys.executable, gta, "--theme", theme["synth"], "--seconds", str(SHORT_SECONDS),
              "--seed", str(seed), "--out", audio] + freq)
         run([sys.executable, mv, "--audio", audio, "--background", FRAME_9x16,
              "--duration-seconds", str(SHORT_SECONDS), "--fps", "24", "--out", video])
         run([sys.executable, mm, "--theme", key, "--format", "short", "--out", meta])
+    elif has_ai_clips:
+        run([sys.executable, bla, "--theme", key, "--seconds", str(LONG_LOOP_SECONDS),
+             "--seed", str(seed), "--out", audio])
+        run([sys.executable, mv, "--audio", audio, "--background", FRAME_16x9,
+             "--duration-hours", str(hours), "--fps", "1", "--out", video])
+        run([sys.executable, mm, "--theme", key, "--format", "long", "--hours", str(hours),
+             "--out", meta])
     else:
         run([sys.executable, gta, "--theme", theme["synth"], "--loop-seconds", str(LONG_LOOP_SECONDS),
              "--seed", str(seed), "--out", audio] + freq)
