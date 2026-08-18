@@ -105,21 +105,7 @@ def produce_one(theme, fmt, out_dir, hours, seed):
 
     # Optional wellness frequency layers (Solfeggio/432 tone(s), brainwave beat,
     # bowl) plus tone-shaping (soft timbre, reverb wash, high-tone de-emphasis).
-    freq = []
-    if theme.get("tone"):
-        freq += ["--tone", str(theme["tone"])]  # single Hz or a combo "432,528,741"
-    if theme.get("beat"):
-        freq += ["--beat", str(theme["beat"]), "--beat-type", theme.get("beat_type", "binaural")]
-    if theme.get("bowl"):
-        freq += ["--bowl"]
-    if theme.get("tone_soft"):
-        freq += ["--tone-soft"]
-    if theme.get("reverb"):
-        freq += ["--reverb", str(theme["reverb"])]
-    if theme.get("tone_tilt"):
-        freq += ["--tone-tilt", str(theme["tone_tilt"])]
-    if theme.get("tone_gain"):
-        freq += ["--tone-gain", str(theme["tone_gain"])]
+    freq = T.synth_args(theme)
 
     if fmt == "short":
         run([sys.executable, gta, "--theme", theme["synth"], "--seconds", str(SHORT_SECONDS),

@@ -486,6 +486,29 @@ PLAYLISTS = {
 }
 
 
+def synth_args(theme: dict) -> list:
+    """generate_theme_audio.py CLI flags for a theme's frequency layers and tone
+    shaping. Single source of truth so videos (produce.py) and distribution
+    exports (make_album.py) render identical audio."""
+    a = []
+    if theme.get("tone"):
+        a += ["--tone", str(theme["tone"])]  # single Hz or a combo "432,528,741"
+    if theme.get("beat"):
+        a += ["--beat", str(theme["beat"]),
+              "--beat-type", theme.get("beat_type", "binaural")]
+    if theme.get("bowl"):
+        a += ["--bowl"]
+    if theme.get("tone_soft"):
+        a += ["--tone-soft"]
+    if theme.get("reverb"):
+        a += ["--reverb", str(theme["reverb"])]
+    if theme.get("tone_tilt"):
+        a += ["--tone-tilt", str(theme["tone_tilt"])]
+    if theme.get("tone_gain"):
+        a += ["--tone-gain", str(theme["tone_gain"])]
+    return a
+
+
 def playlist_for(theme_key: str) -> dict | None:
     """The playlist definition a theme belongs to, or None."""
     for p in PLAYLISTS.values():

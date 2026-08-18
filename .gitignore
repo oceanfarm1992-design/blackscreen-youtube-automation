@@ -31,3 +31,6 @@ Thumbs.db
 
 # --- Local Claude Code settings (machine-specific) ---
 .claude/
+
+# Distribution audio exports (large WAVs; upload to the distributor, never commit)
+dist_music/
