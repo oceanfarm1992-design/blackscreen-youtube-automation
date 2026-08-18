@@ -16,8 +16,11 @@ upload.log
 *.mp4
 *.wav
 
-# --- Live stream generated audio ---
-stream/audio/
+# --- Live stream (secrets + generated audio) ---
+livestream/streams.conf
+livestream/audio/
+livestream/pids/
+livestream/logs/
 
 # --- Python ---
 __pycache__/
