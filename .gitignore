@@ -8,6 +8,8 @@ token.json
 
 # --- Generated render artifacts ---
 out/
+out_test/
+*.zip
 loop.wav
 final.mp4
 thumbnail.png
