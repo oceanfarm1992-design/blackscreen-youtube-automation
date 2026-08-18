@@ -92,6 +92,18 @@ jobs:
           pip install -r requirements.txt
           sudo apt-get update && sudo apt-get install -y ffmpeg
 
+      - name: Download AI clips library
+        run: |
+          gh release download ai-clips-v1 --pattern 'ai_clips.zip' --skip-existing || true
+          if [ -f ai_clips.zip ]; then
+            unzip -qo ai_clips.zip -d assets/
+            echo "AI clips extracted: $(find assets/clips -name '*.wav' | wc -l) files"
+          else
+            echo "No AI clips release found, using pure procedural audio"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       - name: Map schedule -> slot
         id: slot
         run: |
