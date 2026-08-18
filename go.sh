@@ -10,7 +10,20 @@ fi
 
 cd /root/blackscreen-youtube-automation
 
-echo "[1/5] Creating streams.conf..."
+echo "[1/6] Adding swap space (prevents out-of-memory)..."
+if [ ! -f /swapfile ]; then
+  fallocate -l 2G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  echo "  2GB swap created."
+else
+  swapon /swapfile 2>/dev/null || true
+  echo "  Swap already exists."
+fi
+
+echo "[2/6] Creating streams.conf..."
 printf '%s\n' \
   "sleeping|sleeping_loop.wav|${K1}|Deep Sleep Music 24/7" \
   "solfeggio|solfeggio_heal_loop.wav|${K2}|Solfeggio Healing 24/7" \
@@ -20,20 +33,33 @@ printf '%s\n' \
   > livestream/streams.conf
 echo "  Done! 5 streams configured."
 
-echo "[2/5] Setting up directories..."
+echo "[3/6] Setting up directories..."
 mkdir -p livestream/audio livestream/pids livestream/logs livestream/assets
 cp assets/branding/brand_16x9.png livestream/assets/
 echo "  Done!"
 
-echo "[3/5] Generating audio loops (this takes ~30 minutes)..."
-bash livestream/generate_stream_audio.sh
+echo "[4/6] Generating 5-minute audio loops (ffmpeg loops them forever)..."
+THEMES="sleeping solfeggio_heal forest romantic rain rain_drops 528hz_sleep rooftop_rain"
+for theme in $THEMES; do
+  out="livestream/audio/${theme}_loop.wav"
+  if [ -f "$out" ]; then
+    echo "  [$theme] already exists, skipping"
+    continue
+  fi
+  echo "  [$theme] generating..."
+  synth=$(python3 -c "import sys; sys.path.insert(0,'scripts'); import themes as T; print(T.theme_by_key('$theme')['synth'])")
+  args=$(python3 -c "import sys; sys.path.insert(0,'scripts'); import themes as T; print(' '.join(T.synth_args(T.theme_by_key('$theme'))))")
+  python3 scripts/generate_theme_audio.py --theme "$synth" --loop-seconds 300 --seed 55555 --out "$out" $args
+  echo "  [$theme] done"
+done
+echo "  All audio loops ready!"
 
-echo "[4/5] Starting all streams..."
+echo "[5/6] Starting all streams..."
 bash livestream/stream_manager.sh start
 
-echo "[5/5] Setting up auto-restart on reboot..."
+echo "[6/6] Setting up auto-restart on reboot..."
 (crontab -l 2>/dev/null; echo "@reboot cd /root/blackscreen-youtube-automation && bash livestream/stream_manager.sh start") | crontab -
 
 echo ""
 echo "=== ALL DONE! 5 streams running 24/7 ==="
-echo "Check status anytime: cd /root/blackscreen-youtube-automation && bash livestream/stream_manager.sh status"
+echo "Check status: bash livestream/stream_manager.sh status"
