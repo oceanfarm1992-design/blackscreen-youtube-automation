@@ -180,7 +180,9 @@ def build_album(theme, tracks, minutes):
             "file": fname,
             "instrumental": "yes",
             "explicit": "no",
-            "ai_generated": "yes",
+            # Procedural synthesis by our own code — no AI model touches these
+            # tracks (AI clips are only ever mixed into YouTube long-forms).
+            "ai_generated": "no",
         })
         print(f"    {fname}")
 
