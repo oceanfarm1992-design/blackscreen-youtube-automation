@@ -183,6 +183,9 @@ def build_album(theme, tracks, minutes):
             # Procedural synthesis by our own code — no AI model touches these
             # tracks (AI clips are only ever mixed into YouTube long-forms).
             "ai_generated": "no",
+            "origin_note": "Original instrumental music, composed and rendered "
+                           "algorithmically by the artist's own software (Python "
+                           "synthesis engine). No AI models used.",
         })
         print(f"    {fname}")
 
