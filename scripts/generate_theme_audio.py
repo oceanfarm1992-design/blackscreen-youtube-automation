@@ -423,6 +423,92 @@ def synth_romantic_night(n, rng):
     return _norm(warm, 0.9)
 
 
+def synth_ocean(n, rng):
+    """Ocean waves: filtered surf with slow, irregular swell + low sea rumble."""
+    surf = colored_noise(n, rng, tilt=1.1, highpass=150, lowpass=3500)
+    t = _t(n)
+    swell = np.zeros(n)
+    for f in (1 / 9.0, 1 / 13.0, 1 / 7.0):
+        swell += np.sin(2 * np.pi * f * t + rng.uniform(0, 2 * np.pi))
+    swell = 0.5 + 0.5 * swell / (np.max(np.abs(swell)) + 1e-9)
+    swell = swell ** 1.6                                  # sharper wave crests
+    rumble = colored_noise(n, rng, tilt=2.0, lowpass=400)
+    return _norm(0.8 * surf * (0.25 + 0.75 * swell) + 0.22 * rumble, 0.9)
+
+
+def _crackle(n, rng, rate=11):
+    """Random sharp pops for a crackling fire."""
+    out = np.zeros(n)
+    for _ in range(int(rate * n / SR)):
+        pos = int(rng.integers(0, max(1, n - 400)))
+        m = int(rng.integers(30, 400))
+        env = np.exp(-np.linspace(0, rng.uniform(8, 25), m))
+        out[pos:pos + m] += env * rng.standard_normal(m) * rng.uniform(0.3, 1.0)
+    return out
+
+
+def synth_fireplace(n, rng):
+    """Crackling fireplace: warm low body + soft hiss + random crackles."""
+    rumble = colored_noise(n, rng, tilt=2.2, lowpass=250) * 0.4
+    hiss = colored_noise(n, rng, tilt=1.6, highpass=300, lowpass=6500) * 0.22
+    crackle = lowpass(_crackle(n, rng, rate=11), corner=5500)
+    return _norm(rumble + hiss + 0.8 * crackle, 0.9)
+
+
+def synth_thunderstorm(n, rng):
+    """Heavy rain with frequent thunder + deep rumble."""
+    rain = colored_noise(n, rng, tilt=0.8, highpass=180, lowpass=8000)
+    rain *= slow_env(n, rng, rate_hz=0.1, depth=0.25)
+    thunder = sprinkle(n, rng, count=max(2, n // (SR * 35)), make_event=_thunder_event)
+    rumble = colored_noise(n, rng, tilt=2.4, lowpass=120) * 0.3
+    return _norm(0.72 * rain + 1.1 * thunder + rumble, 0.92)
+
+
+def synth_brown_noise(n, rng):
+    """Deep brown noise (trending for focus/sleep/ADHD)."""
+    return _norm(colored_noise(n, rng, tilt=2.0, lowpass=9000), 0.9)
+
+
+def synth_white_noise(n, rng):
+    """Soft white noise (rolled off slightly so it is not harsh)."""
+    return _norm(colored_noise(n, rng, tilt=0.25, lowpass=13000), 0.9)
+
+
+def synth_pink_noise(n, rng):
+    """Balanced pink noise."""
+    return _norm(colored_noise(n, rng, tilt=1.0, lowpass=14000), 0.9)
+
+
+def synth_wind(n, rng):
+    """Howling wind: filtered noise with strong slow gusts + faint whistle."""
+    wind = colored_noise(n, rng, tilt=1.5, lowpass=1200)
+    gust = slow_env(n, rng, rate_hz=0.06, depth=0.7)
+    whistle = colored_noise(n, rng, tilt=1.0, highpass=1500, lowpass=3500) * 0.14
+    return _norm(wind * gust + whistle * slow_env(n, rng, 0.08, 0.9), 0.9)
+
+
+def _cricket(rng):
+    m = int(rng.uniform(0.02, 0.05) * SR)
+    env = np.sin(np.linspace(0, np.pi, m)) ** 2
+    return 0.1 * env * sine(rng.uniform(3800, 4800), m)
+
+
+def synth_night(n, rng):
+    """Summer night: crickets + soft ambience + low pad."""
+    amb = colored_noise(n, rng, tilt=1.8, lowpass=2000) * 0.28
+    crickets = sprinkle(n, rng, count=max(60, n // (SR // 10)), make_event=_cricket)
+    pad = pad_layer(n, rng, roots=[110.0, 164.81], amp=0.05)
+    return _norm(amb + 0.5 * crickets + pad, 0.9)
+
+
+def synth_stream(n, rng):
+    """Gentle stream / creek: light flowing water + occasional bubbles."""
+    water = colored_noise(n, rng, tilt=1.0, highpass=400, lowpass=6000)
+    water *= slow_env(n, rng, rate_hz=0.25, depth=0.12)
+    bubbles = sprinkle(n, rng, count=max(10, n // (SR * 2)), make_event=_droplet)
+    return _norm(0.8 * water + 0.4 * bubbles, 0.9)
+
+
 SYNTHS = {
     "rain": synth_rain,
     "rain_drops": synth_rain_drops,
@@ -432,6 +518,15 @@ SYNTHS = {
     "indian": synth_indian,
     "romantic": synth_romantic,
     "romantic_night": synth_romantic_night,
+    "ocean": synth_ocean,
+    "fireplace": synth_fireplace,
+    "thunderstorm": synth_thunderstorm,
+    "brown_noise": synth_brown_noise,
+    "white_noise": synth_white_noise,
+    "pink_noise": synth_pink_noise,
+    "wind": synth_wind,
+    "night": synth_night,
+    "stream": synth_stream,
 }
 
 

@@ -64,6 +64,15 @@ STYLES = {
     "528hz_sleep":         (["528 Hz", "SLEEP MUSIC"], (80, 170, 190)),
     "delta_sleep":         (["DELTA WAVES", "DEEP SLEEP"], (70, 100, 200)),
     "432hz_relax":         (["432 Hz", "RELAXING MUSIC"], (200, 110, 170)),
+    "ocean":               (["OCEAN WAVES", "FOR SLEEP"], (50, 130, 200)),
+    "fireplace":           (["FIREPLACE", "SOUNDS"], (220, 120, 50)),
+    "thunderstorm":        (["THUNDERSTORM", "HEAVY RAIN"], (90, 110, 175)),
+    "brown_noise":         (["BROWN NOISE", "SLEEP & FOCUS"], (155, 105, 60)),
+    "white_noise":         (["WHITE NOISE", "FOR SLEEP"], (175, 185, 200)),
+    "pink_noise":          (["PINK NOISE", "DEEP SLEEP"], (220, 120, 160)),
+    "wind":                (["WIND SOUNDS", "FOR SLEEP"], (120, 160, 185)),
+    "night":               (["NIGHT SOUNDS", "CRICKETS & CALM"], (80, 90, 185)),
+    "stream":              (["STREAM SOUNDS", "GENTLE CREEK"], (60, 175, 160)),
 }
 
 

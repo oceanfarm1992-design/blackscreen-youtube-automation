@@ -442,6 +442,159 @@ THEMES = [
             "sleep music", "healing frequency", "black screen",
         ],
     },
+    {
+        "key": "ocean",
+        "name": "Ocean Waves",
+        "synth": "ocean",
+        "emoji": "\U0001F30A",  # 🌊
+        "short_title": "Ocean Waves for Sleep \U0001F30A Relaxing Sea Sounds #shorts",
+        "long_title": "Ocean Waves \U0001F30A {hours} Hours Relaxing Sea Sounds for Deep Sleep | Black Screen",
+        "description": (
+            "Gentle ocean waves rolling onto the shore to help you relax and drift into "
+            "deep sleep. Soothing sea sounds for rest, calm, and focus. Black screen."
+        ),
+        "tags": [
+            "ocean sounds", "ocean waves", "sea sounds for sleeping", "relaxing ocean",
+            "ocean waves sleep", "wave sounds", "beach sounds", "deep sleep music",
+            "black screen", "white noise", "nature sounds", "calming ocean", "sleep sounds",
+        ],
+    },
+    {
+        "key": "fireplace",
+        "name": "Crackling Fireplace",
+        "synth": "fireplace",
+        "emoji": "\U0001F525",  # 🔥
+        "short_title": "Crackling Fireplace \U0001F525 Cozy Fire Sounds for Sleep #shorts",
+        "long_title": "Fireplace Sounds \U0001F525 {hours} Hours Crackling Fire for Sleep, Relax & Study | Black Screen",
+        "description": (
+            "The cozy crackle of a warm fireplace to help you relax, sleep, read, or "
+            "study. Soothing crackling fire sounds all night. Black screen."
+        ),
+        "tags": [
+            "fireplace sounds", "crackling fire", "fireplace", "fire sounds",
+            "cozy fireplace", "fireplace ambience", "relaxing fire", "campfire sounds",
+            "sleep sounds", "study music", "black screen", "white noise", "fire crackling",
+        ],
+    },
+    {
+        "key": "thunderstorm",
+        "name": "Thunderstorm",
+        "synth": "thunderstorm",
+        "emoji": "\U000026C8️",  # ⛈️
+        "short_title": "Thunderstorm for Sleep \U000026C8️ Heavy Rain & Thunder #shorts",
+        "long_title": "Thunderstorm Sounds \U000026C8️ {hours} Hours Heavy Rain & Thunder for Sleep | Black Screen",
+        "description": (
+            "Heavy rain and rolling thunder for deep, cozy sleep. A powerful, calming "
+            "storm to relax the mind and drift away. Black screen."
+        ),
+        "tags": [
+            "thunderstorm sounds", "thunder and rain", "heavy rain sounds", "storm sounds",
+            "thunderstorm for sleeping", "rain and thunder", "thunder sounds",
+            "deep sleep music", "black screen", "relaxing storm", "sleep sounds", "rain sounds",
+        ],
+    },
+    {
+        "key": "brown_noise",
+        "name": "Brown Noise",
+        "synth": "brown_noise",
+        "emoji": "\U0001F7EB",  # 🟫
+        "short_title": "Brown Noise for Sleep & Focus \U0001F7EB #shorts",
+        "long_title": "Brown Noise \U0001F7EB {hours} Hours for Deep Sleep, Focus & Relaxation | Black Screen",
+        "description": (
+            "Deep, smooth brown noise to help you fall asleep fast, focus, and block out "
+            "distractions. Great for sleep, study, and concentration. Black screen."
+        ),
+        "tags": [
+            "brown noise", "brown noise for sleeping", "brown noise sleep",
+            "brown noise focus", "brown noise study", "deep brown noise", "focus music",
+            "white noise", "study music", "sleep sounds", "black screen", "relaxing noise",
+        ],
+    },
+    {
+        "key": "white_noise",
+        "name": "White Noise",
+        "synth": "white_noise",
+        "emoji": "\U000026AA",  # ⚪
+        "short_title": "White Noise for Sleep \U000026AA Baby Sleep & Focus #shorts",
+        "long_title": "White Noise \U000026AA {hours} Hours for Sleep, Baby Sleep & Focus | Black Screen",
+        "description": (
+            "Soothing white noise to help you and your baby sleep, and to stay focused "
+            "while studying or working. Blocks out distractions all night. Black screen."
+        ),
+        "tags": [
+            "white noise", "white noise for sleeping", "white noise baby",
+            "white noise sleep", "baby sleep sounds", "focus music", "study music",
+            "sleep sounds", "black screen", "relaxing noise", "soothing white noise",
+        ],
+    },
+    {
+        "key": "pink_noise",
+        "name": "Pink Noise",
+        "synth": "pink_noise",
+        "emoji": "\U0001FA77",  # 🩷
+        "short_title": "Pink Noise for Deep Sleep \U0001FA77 #shorts",
+        "long_title": "Pink Noise \U0001FA77 {hours} Hours for Deep Sleep & Relaxation | Black Screen",
+        "description": (
+            "Balanced, gentle pink noise to help you fall into deep, restful sleep and "
+            "relax the mind. Softer than white noise. Black screen."
+        ),
+        "tags": [
+            "pink noise", "pink noise for sleeping", "pink noise sleep",
+            "pink noise deep sleep", "sleep sounds", "white noise", "relaxing noise",
+            "focus music", "black screen", "soothing noise", "calming noise",
+        ],
+    },
+    {
+        "key": "wind",
+        "name": "Wind Sounds",
+        "synth": "wind",
+        "emoji": "\U0001F32C️",  # 🌬️
+        "short_title": "Wind Sounds for Sleep \U0001F32C️ Calming Wind #shorts",
+        "long_title": "Wind Sounds \U0001F32C️ {hours} Hours Calming Wind for Sleep & Relaxation | Black Screen",
+        "description": (
+            "Soft, calming wind blowing gently to soothe you into deep sleep and quiet the "
+            "mind. Relaxing wind ambience all night. Black screen."
+        ),
+        "tags": [
+            "wind sounds", "wind sounds for sleeping", "howling wind", "relaxing wind",
+            "wind ambience", "nature sounds", "sleep sounds", "white noise", "black screen",
+            "calming wind", "wind noise", "deep sleep music",
+        ],
+    },
+    {
+        "key": "night",
+        "name": "Night Sounds",
+        "synth": "night",
+        "emoji": "\U0001F30C",  # 🌌
+        "short_title": "Night Sounds for Sleep \U0001F30C Crickets & Calm #shorts",
+        "long_title": "Night Sounds \U0001F30C {hours} Hours Crickets & Nature for Deep Sleep | Black Screen",
+        "description": (
+            "The peaceful sounds of a summer night — gentle crickets and soft nature "
+            "ambience — to help you relax and fall into deep sleep. Black screen."
+        ),
+        "tags": [
+            "night sounds", "cricket sounds", "crickets for sleeping", "summer night sounds",
+            "nature sounds for sleeping", "night ambience", "relaxing night", "sleep sounds",
+            "black screen", "calming nature", "deep sleep music", "cricket sounds sleep",
+        ],
+    },
+    {
+        "key": "stream",
+        "name": "Stream Sounds",
+        "synth": "stream",
+        "emoji": "\U0001F3DE️",  # 🏞️
+        "short_title": "Stream Sounds for Sleep \U0001F3DE️ Gentle Creek #shorts",
+        "long_title": "Stream Sounds \U0001F3DE️ {hours} Hours Gentle Creek & Flowing Water for Sleep | Black Screen",
+        "description": (
+            "A gentle stream flowing over rocks — soft, calming water sounds for deep "
+            "sleep, relaxation, and focus. Black screen."
+        ),
+        "tags": [
+            "stream sounds", "creek sounds", "flowing water", "river sounds",
+            "water sounds for sleeping", "relaxing stream", "nature sounds", "sleep sounds",
+            "black screen", "white noise", "calming water", "deep sleep music",
+        ],
+    },
 ]
 
 BRAND_NAME = "Meditated Sleeping"
