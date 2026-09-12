@@ -1,21 +1,20 @@
 name: daily-produce-aether
 
 # Produces "Aether & Ash" videos, ONE per run, spread across the day so runs
-# never overlap. 3 assets/day = 2 long-forms (3h, 1920x1080; sleep/meditation
-# themes render 8h) + 1 Short (59s, 1080x1920), on the branded dark frame.
+# never overlap. Shorts-only for now (no long-forms) -- 2 Shorts/day (59s,
+# 1080x1920), on the branded dark frame. Bump LONGS_PER_DAY in
+# aether/themes.py (and add more crons/slots here) once ready for long-forms.
 #
-# The 3 runs fire every 8h. Each cron maps to a "slot" 0..2 (see
-# aether/produce.py --slot): slots 0-1 = long-forms, slot 2 = the Short.
+# The 2 runs fire 12h apart. Each cron maps to a "slot" 0..1 (see
+# aether/produce.py --slot); with LONGS_PER_DAY=0 both slots are Shorts.
 # Musics rotate through the whole theme library in a continuous cycle. Runs
 # on a PUBLIC repo so standard-runner minutes are free and unmetered.
 #
 # Scheduled on ODD hours so this never overlaps the "Meditated Sleeping"
 # channel's daily-produce workflow (which uses even hours only).
 #
-# YouTube quota: 10,000 units/day. This channel's cadence fits ONE OAuth
-# project: 2 long * (1600 insert + 50 thumbnail) + 1 short * 1600 + 50
-# playlist-add ~= 4,950 / 10,000 -- comfortable headroom, no second
-# "Shorts" project needed (unlike the sibling channel).
+# YouTube quota: 10,000 units/day. 2 Shorts/day = 2*1600 ~= 3,200 / 10,000 --
+# very comfortable headroom on a single OAuth project.
 #
 # Optional repo Secrets (Settings -> Secrets and variables -> Actions). If
 # present, the day's videos are uploaded to the Aether & Ash channel as
@@ -26,9 +25,8 @@ name: daily-produce-aether
 
 on:
   schedule:
-    - cron: "0 1 * * *"     # slot 0   01:00 UTC  long
-    - cron: "0 9 * * *"     # slot 1   09:00 UTC  long
-    - cron: "0 17 * * *"    # slot 2   17:00 UTC  short
+    - cron: "0 5 * * *"     # slot 0   05:00 UTC  short
+    - cron: "0 17 * * *"    # slot 1   17:00 UTC  short
   workflow_dispatch:
     inputs:
       hours:
@@ -81,9 +79,8 @@ jobs:
         id: slot
         run: |
           case "${{ github.event.schedule }}" in
-            "0 1 * * *")   echo "slot=0" >> "$GITHUB_OUTPUT" ;;
-            "0 9 * * *")   echo "slot=1" >> "$GITHUB_OUTPUT" ;;
-            "0 17 * * *")  echo "slot=2" >> "$GITHUB_OUTPUT" ;;
+            "0 5 * * *")   echo "slot=0" >> "$GITHUB_OUTPUT" ;;
+            "0 17 * * *")  echo "slot=1" >> "$GITHUB_OUTPUT" ;;
             *)             echo "slot=" >> "$GITHUB_OUTPUT" ;;
           esac
 

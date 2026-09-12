@@ -31,11 +31,12 @@ def long_hours_for(theme_key: str) -> int:
     """Content-matched long-form duration for a theme (falls back to 3h)."""
     return LONG_HOURS.get(theme_key, LONG_HOURS_DEFAULT)
 
-# Daily publishing plan: a small, quota-comfortable launch cadence on a
-# SINGLE OAuth/Cloud project (2*1600 upload + 1*1650(+thumb) + 50 playlist
-# add ~= 4,950 / 10,000 units -- no second "Shorts" project needed yet).
-LONGS_PER_DAY = 2
-SHORTS_PER_DAY = 1
+# Daily publishing plan: Shorts only for now (no long-forms), 2/day on a
+# SINGLE OAuth/Cloud project (2*1600 upload ~= 3,200 / 10,000 units -- very
+# comfortable headroom). Bump LONGS_PER_DAY back up once ready to add
+# long-form uploads.
+LONGS_PER_DAY = 0
+SHORTS_PER_DAY = 2
 DAILY_COUNT = LONGS_PER_DAY + SHORTS_PER_DAY
 
 # Ordered rotation. `synth` names a function in scripts/generate_theme_audio.py.
