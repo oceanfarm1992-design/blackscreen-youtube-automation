@@ -1,24 +1,20 @@
 name: daily-produce
 
 # Produces "Meditated Sleeping" videos, ONE per run, spread across the day so runs
-# never overlap. 12 assets/day = 6 long-forms (10h, 1920x1080) + 6 Shorts (59s,
-# 1080x1920), on the black #0D0D0D branded frame.
+# never overlap. 2 assets/day = 1 long-form (10h, 1920x1080) + 1 Short (59s,
+# 1080x1920), on the black #0D0D0D branded frame (reduced from 6+6).
 #
-# The 12 runs fire every 2h, alternating long/short. Each cron maps to a "slot"
-# 0..11: slots 0-5 = long-forms, slots 6-11 = the Shorts (see produce.py --slot).
-# Musics rotate through the whole theme library in a continuous cycle (each
-# video takes the next theme; wraps to the start after the last), so every
-# day's 12 videos are distinct. Runs on a PUBLIC repo so standard-runner
-# minutes are free and unmetered.
+# The 2 runs fire 12h apart. Each cron maps to a "slot" 0..1: slot 0 = the
+# long-form, slot 1 = the Short (see produce.py --slot). Musics rotate
+# through the whole theme library in a continuous cycle (each video takes
+# the next theme; wraps to the start after the last), so every day's videos
+# are distinct. Runs on a PUBLIC repo so standard-runner minutes are free
+# and unmetered.
 #
 # YouTube quota: 10,000 units/day PER Cloud project; upload = 1,600, thumbnail = 50,
-# playlist add = 50. Uploads are split across TWO projects so neither is exceeded:
-#   - Long-forms -> main project:      6 * (1600 + 50)      = 9,900 / 10,000 (TIGHT)
-#   - Shorts     -> YT_SHORTS project: 6 * 1600 + 6 * 50    = 9,905 / 10,000
-#     (the +6*50 is the auto-playlist adds for the day's long-forms, routed
-#      through the YT_SHORTS project because it has the headroom)
-# publish_queue.py routes each upload by format. (Change LONGS/SHORTS_PER_DAY in
-# themes.py with care -- keep each project's daily total under 10,000.)
+# playlist add = 50. At this cadence a single project is trivially under quota
+# (1*(1600+50) + 1*1600 + 50 = 3,300 / 10,000), but the two-project routing in
+# publish_queue.py is left wired up (harmless if unused -- see themes.py).
 #
 # Optional repo Secrets (Settings -> Secrets and variables -> Actions). If present,
 # the day's videos are uploaded to the channel as PUBLIC. Without them, the assets
@@ -32,17 +28,7 @@ name: daily-produce
 on:
   schedule:
     - cron: "0 0 * * *"     # slot 0   00:00 UTC  long
-    - cron: "0 2 * * *"     # slot 6   02:00 UTC  short
-    - cron: "0 4 * * *"     # slot 1   04:00 UTC  long
-    - cron: "0 6 * * *"     # slot 7   06:00 UTC  short
-    - cron: "0 8 * * *"     # slot 2   08:00 UTC  long
-    - cron: "0 10 * * *"    # slot 8   10:00 UTC  short
-    - cron: "0 12 * * *"    # slot 3   12:00 UTC  long
-    - cron: "0 14 * * *"    # slot 9   14:00 UTC  short
-    - cron: "0 16 * * *"    # slot 4   16:00 UTC  long
-    - cron: "0 18 * * *"    # slot 10  18:00 UTC  short
-    - cron: "0 20 * * *"    # slot 5   20:00 UTC  long
-    - cron: "0 22 * * *"    # slot 11  22:00 UTC  short
+    - cron: "0 12 * * *"    # slot 1   12:00 UTC  short
   workflow_dispatch:
     inputs:
       hours:
@@ -102,17 +88,7 @@ jobs:
         run: |
           case "${{ github.event.schedule }}" in
             "0 0 * * *")   echo "slot=0" >> "$GITHUB_OUTPUT" ;;
-            "0 4 * * *")   echo "slot=1" >> "$GITHUB_OUTPUT" ;;
-            "0 8 * * *")   echo "slot=2" >> "$GITHUB_OUTPUT" ;;
-            "0 12 * * *")  echo "slot=3" >> "$GITHUB_OUTPUT" ;;
-            "0 16 * * *")  echo "slot=4" >> "$GITHUB_OUTPUT" ;;
-            "0 20 * * *")  echo "slot=5" >> "$GITHUB_OUTPUT" ;;
-            "0 2 * * *")   echo "slot=6" >> "$GITHUB_OUTPUT" ;;
-            "0 6 * * *")   echo "slot=7" >> "$GITHUB_OUTPUT" ;;
-            "0 10 * * *")  echo "slot=8" >> "$GITHUB_OUTPUT" ;;
-            "0 14 * * *")  echo "slot=9" >> "$GITHUB_OUTPUT" ;;
-            "0 18 * * *")  echo "slot=10" >> "$GITHUB_OUTPUT" ;;
-            "0 22 * * *")  echo "slot=11" >> "$GITHUB_OUTPUT" ;;
+            "0 12 * * *")  echo "slot=1" >> "$GITHUB_OUTPUT" ;;
             *)             echo "slot=" >> "$GITHUB_OUTPUT" ;;
           esac
 

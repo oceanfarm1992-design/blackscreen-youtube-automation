@@ -268,13 +268,18 @@ def synth_forest(n, rng):
 def synth_sleeping(n, rng):
     # Foundation kept in the 110-220 Hz range so it is audible on laptop/phone
     # speakers (a 55 Hz drone is inaudible there and reads as silence + hiss).
+    # Transposed per render (see _transpose_ratio) -- independent of any
+    # theme["tone"] wellness-frequency layer added on top in main(), which
+    # uses its own fixed marketed Hz value untouched by this shift.
+    ratio = _transpose_ratio(rng)
     drone = np.zeros(n)
-    for f in (110.0, 164.81, 220.00):  # A2 E3 A3
+    for f in (110.0 * ratio, 164.81 * ratio, 220.00 * ratio):  # A2 E3 A3
         drone += sine(f, n, rng.uniform(0, 2 * np.pi))
         drone += sine(f * (1 + 0.0015), n, rng.uniform(0, 2 * np.pi))  # gentle beating
-    sub = sine(55.0, n, rng.uniform(0, 2 * np.pi))  # light sub-bass for headphones
+    sub = sine(55.0 * ratio, n, rng.uniform(0, 2 * np.pi))  # light sub-bass for headphones
     # Prominent mid-range pad carries the melody on small speakers.
-    chord = pad_layer(n, rng, roots=[220.00, 261.63, 329.63, 392.00], detune=0.003, amp=0.24)
+    chord = pad_layer(n, rng, roots=[220.00 * ratio, 261.63 * ratio, 329.63 * ratio,
+                                      392.00 * ratio], detune=0.003, amp=0.24)
     warm = lowpass(0.4 * _norm(drone) + 0.18 * sub + chord, corner=1600)
     # Very slow swell instead of a 2 Hz flutter (which reads as warble/wobble).
     delta = 1 + 0.04 * np.sin(2 * np.pi * 0.1 * _t(n))

@@ -41,20 +41,14 @@ def long_hours_for(theme_key: str) -> int:
     """Content-matched long-form duration for a theme (falls back to 10h)."""
     return LONG_HOURS.get(theme_key, LONG_HOURS_DEFAULT)
 
-# Daily publishing plan, spread across 12 scheduled runs (one video each):
-#   LONGS_PER_DAY long-forms + SHORTS_PER_DAY Shorts.
-# Quota is split across two Cloud projects so neither hits the 10,000/day cap:
-#   - Long-forms (main project):  6 x (1600 insert + 50 thumbnail) = 9,900 units
-#   - Shorts (YT_SHORTS project): 6 x 1600 (no thumbnail)          = 9,600 units
-# Both fit the free 10,000/day quota, but the long-form side is TIGHT (only 100
-# units of headroom) -- a single upload retry or extra API call would exceed it.
-# The library has >= DAILY_COUNT themes, so each day's 12 videos are all distinct
-# musics; the rotation walks the whole library in order and restarts at the end.
-# If the YT_SHORTS_* secrets are absent, Shorts fall back to the main project
-# (6*1650 + 6*1600 = 19,500) -- far over quota -- so keep the 2nd project set.
-LONGS_PER_DAY = 6
-SHORTS_PER_DAY = 6
-DAILY_COUNT = LONGS_PER_DAY + SHORTS_PER_DAY  # may exceed len(THEMES); see note above
+# Daily publishing plan: 1 long-form + 1 Short/day (reduced from 6+6 -- less
+# upload volume, still a different, unique music each day via the rotation).
+# Quota is now trivial on a single project: 1*(1600+50) + 1*1600 = 3,250 /
+# 10,000 -- the YT_SHORTS second project is no longer needed for quota
+# headroom, but is left wired up (harmless if unused; see publish_queue.py).
+LONGS_PER_DAY = 1
+SHORTS_PER_DAY = 1
+DAILY_COUNT = LONGS_PER_DAY + SHORTS_PER_DAY
 
 # Ordered rotation. `synth` names a function in generate_theme_audio.py.
 THEMES = [
