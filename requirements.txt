@@ -5,6 +5,9 @@
 numpy>=1.26
 soundfile>=0.12
 
+# Aether & Ash: procedural video generation (noise field + blur)
+Pillow>=10.0
+
 # AI music generation (MusicGen via Replicate)
 replicate>=1.0
 
