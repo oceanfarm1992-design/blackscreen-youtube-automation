@@ -1,0 +1,127 @@
+name: daily-produce-aether
+
+# Produces "Aether & Ash" videos, ONE per run, spread across the day so runs
+# never overlap. 3 assets/day = 2 long-forms (3h, 1920x1080; sleep/meditation
+# themes render 8h) + 1 Short (59s, 1080x1920), on the branded dark frame.
+#
+# The 3 runs fire every 8h. Each cron maps to a "slot" 0..2 (see
+# aether/produce.py --slot): slots 0-1 = long-forms, slot 2 = the Short.
+# Musics rotate through the whole theme library in a continuous cycle. Runs
+# on a PUBLIC repo so standard-runner minutes are free and unmetered.
+#
+# Scheduled on ODD hours so this never overlaps the "Meditated Sleeping"
+# channel's daily-produce workflow (which uses even hours only).
+#
+# YouTube quota: 10,000 units/day. This channel's cadence fits ONE OAuth
+# project: 2 long * (1600 insert + 50 thumbnail) + 1 short * 1600 + 50
+# playlist-add ~= 4,950 / 10,000 -- comfortable headroom, no second
+# "Shorts" project needed (unlike the sibling channel).
+#
+# Optional repo Secrets (Settings -> Secrets and variables -> Actions). If
+# present, the day's videos are uploaded to the Aether & Ash channel as
+# PUBLIC. Without them, the assets are produced and saved as run artifacts
+# only. Use the workflow_dispatch "privacy" input to override to
+# private/unlisted for a manual run.
+#   AETHER_YT_CLIENT_ID, AETHER_YT_CLIENT_SECRET, AETHER_YT_REFRESH_TOKEN
+
+on:
+  schedule:
+    - cron: "0 1 * * *"     # slot 0   01:00 UTC  long
+    - cron: "0 9 * * *"     # slot 1   09:00 UTC  long
+    - cron: "0 17 * * *"    # slot 2   17:00 UTC  short
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: "Long-form length override (blank = per-theme: most 3h, sleep/meditation 8h)"
+        default: ""
+      privacy:
+        description: "Upload visibility: private | unlisted | public"
+        default: "public"
+      shorts:
+        description: "Test only: number of Shorts (0 = full daily batch)"
+        default: "0"
+      longs:
+        description: "Test only: number of long-forms (0 = full daily batch)"
+        default: "0"
+
+# Least privilege: the auto-injected GITHUB_TOKEN only ever needs to read the
+# repo (checkout). Uploads use the AETHER_YT_* secrets, not this token.
+permissions:
+  contents: read
+
+# One production run at a time so two runs can never render/upload
+# simultaneously. Separate group from the sibling channel's "daily-produce"
+# so the two channels never block each other.
+concurrency:
+  group: daily-produce-aether
+  cancel-in-progress: false
+
+jobs:
+  produce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      AETHER_YT_CLIENT_ID: ${{ secrets.AETHER_YT_CLIENT_ID }}
+      AETHER_YT_CLIENT_SECRET: ${{ secrets.AETHER_YT_CLIENT_SECRET }}
+      AETHER_YT_REFRESH_TOKEN: ${{ secrets.AETHER_YT_REFRESH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Map schedule -> slot
+        id: slot
+        run: |
+          case "${{ github.event.schedule }}" in
+            "0 1 * * *")   echo "slot=0" >> "$GITHUB_OUTPUT" ;;
+            "0 9 * * *")   echo "slot=1" >> "$GITHUB_OUTPUT" ;;
+            "0 17 * * *")  echo "slot=2" >> "$GITHUB_OUTPUT" ;;
+            *)             echo "slot=" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Produce video(s) + QC
+        run: |
+          SHORTS="${{ github.event.inputs.shorts || 0 }}"
+          LONGS="${{ github.event.inputs.longs || 0 }}"
+          SLOT="${{ steps.slot.outputs.slot }}"
+          HOURS="${{ github.event.inputs.hours }}"
+          HOURS_ARG=""
+          [ -n "$HOURS" ] && HOURS_ARG="--hours $HOURS"
+          if [ "$SHORTS" != "0" ] || [ "$LONGS" != "0" ]; then
+            echo "Manual test batch: $LONGS long(s) + $SHORTS short(s)"
+            python aether/produce.py --shorts "$SHORTS" --longs "$LONGS" \
+              $HOURS_ARG --out-dir out
+          elif [ -n "$SLOT" ]; then
+            echo "Scheduled slot $SLOT"
+            python aether/produce.py --slot "$SLOT" $HOURS_ARG --out-dir out
+          else
+            echo "Manual full daily batch"
+            python aether/produce.py --daily $HOURS_ARG --out-dir out
+          fi
+
+      - name: Show queue manifests
+        run: |
+          for m in out/*_manifest.json; do echo "--- $m ---"; cat "$m"; echo; done
+
+      - name: Upload to YouTube as PUBLIC (only if secrets are set)
+        if: ${{ env.AETHER_YT_REFRESH_TOKEN != '' }}
+        run: |
+          python aether/publish_queue.py --out-dir out --privacy "${{ github.event.inputs.privacy || 'public' }}"
+
+      - name: Upload metadata + manifests as artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: metadata-aether-${{ github.run_id }}
+          path: |
+            out/*_manifest.json
+            out/*_meta.json
+          retention-days: 14

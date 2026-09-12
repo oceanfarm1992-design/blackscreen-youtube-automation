@@ -136,6 +136,18 @@ def _norm(x, peak=1.0):
     return x * (peak / m)
 
 
+# A small, curated set of semitone shifts (not free/chromatic transposition):
+# enough that a theme's pitch center is genuinely different render to render
+# (so no two uploads share an exact harmony), while staying close enough to
+# the tuned original that the theme still sounds like itself.
+_TRANSPOSE_SEMITONES = (-4, -2, 0, 2, 3)
+
+
+def _transpose_ratio(rng):
+    """Pick one preset pitch-shift ratio for this render's melodic root(s)."""
+    return 2.0 ** (rng.choice(_TRANSPOSE_SEMITONES) / 12.0)
+
+
 def sine(freq, n, phase=0.0):
     return np.sin(2 * np.pi * freq * _t(n) + phase)
 
@@ -325,7 +337,7 @@ def _indian_melody(n, rng, sa=220.0):
 
 
 def synth_indian(n, rng):
-    sa = 220.0
+    sa = 220.0 * _transpose_ratio(rng)
     drone = tanpura(n, rng, sa=sa)
     melody = _indian_melody(n, rng, sa=sa)
     pad = pad_layer(n, rng, roots=[sa * 0.5, sa * 0.75, sa], amp=0.08)  # Sa Pa Sa support
@@ -395,14 +407,17 @@ def _sparse_melody(n, rng, scale, gap=(1.0, 3.0), dur=(0.8, 2.0), amp=0.3, maker
 
 def synth_romantic(n, rng):
     """Warm 'love' music: lush major-7th progression + soft music-box melody."""
+    ratio = _transpose_ratio(rng)
     chords = [
-        [261.63, 329.63, 392.00, 493.88],  # Cmaj7
-        [220.00, 261.63, 329.63, 392.00],  # Am7
-        [174.61, 220.00, 261.63, 329.63],  # Fmaj7
-        [196.00, 246.94, 293.66, 349.23],  # G7
+        [f * ratio for f in c] for c in (
+            [261.63, 329.63, 392.00, 493.88],  # Cmaj7
+            [220.00, 261.63, 329.63, 392.00],  # Am7
+            [174.61, 220.00, 261.63, 329.63],  # Fmaj7
+            [196.00, 246.94, 293.66, 349.23],  # G7
+        )
     ]
     pad = progression_pad(n, rng, chords, chord_sec=8.0, amp=0.18)
-    scale = np.array([261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25])
+    scale = ratio * np.array([261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25])
     melody = _sparse_melody(n, rng, scale, gap=(1.2, 3.2), dur=(0.8, 1.8), amp=0.30, maker=_bell)
     warm = lowpass(pad + melody, corner=3000)
     return _norm(warm, 0.9)
@@ -410,14 +425,17 @@ def synth_romantic(n, rng):
 
 def synth_romantic_night(n, rng):
     """Slow, low, smoky 'bedroom love' mood: minor-7th changes + sultry warm melody."""
+    ratio = _transpose_ratio(rng)
     chords = [
-        [110.00, 130.81, 164.81, 196.00],  # Am7
-        [146.83, 174.61, 220.00, 261.63],  # Dm7
-        [174.61, 220.00, 261.63, 329.63],  # Fmaj7
-        [164.81, 196.00, 246.94, 293.66],  # Em7
+        [f * ratio for f in c] for c in (
+            [110.00, 130.81, 164.81, 196.00],  # Am7
+            [146.83, 174.61, 220.00, 261.63],  # Dm7
+            [174.61, 220.00, 261.63, 329.63],  # Fmaj7
+            [164.81, 196.00, 246.94, 293.66],  # Em7
+        )
     ]
     pad = progression_pad(n, rng, chords, chord_sec=12.0, amp=0.20, detune=0.005)
-    scale = np.array([146.83, 164.81, 196.00, 220.00, 261.63, 293.66, 329.63])
+    scale = ratio * np.array([146.83, 164.81, 196.00, 220.00, 261.63, 293.66, 329.63])
     melody = _sparse_melody(n, rng, scale, gap=(2.0, 5.0), dur=(2.0, 4.0), amp=0.26, maker=_warm_note)
     warm = lowpass(pad + melody, corner=1800)
     return _norm(warm, 0.9)
@@ -509,6 +527,210 @@ def synth_stream(n, rng):
     return _norm(0.8 * water + 0.4 * bubbles, 0.9)
 
 
+# --------------------------------------------------------------------------- #
+# "Aether & Ash" theme synths (dark ambient / drone / focus / writing /
+# cinematic / sleep) -- built from the same genre-agnostic toolkit above.
+# --------------------------------------------------------------------------- #
+def synth_void_drone(n, rng):
+    """Void Drones: layered sub-bass sines (C1/C2/G2/C3) with slow LFO drift
+    and a faint sub-bass rumble floor. Deep, cosmic isolation."""
+    roots = [32.70, 65.41, 98.00, 130.81]  # C1 C2 G2 C3
+    drone = np.zeros(n)
+    for f in roots:
+        lfo = 1 + 0.05 * np.sin(2 * np.pi * 0.08 * _t(n) + rng.uniform(0, 2 * np.pi))
+        drone += sine(f, n, rng.uniform(0, 2 * np.pi)) * lfo
+    drone = lowpass(drone, corner=220)
+    breath = slow_env(n, rng, rate_hz=0.05, depth=0.35)
+    rumble = colored_noise(n, rng, tilt=2.6, lowpass=90) * 0.15
+    return _norm(0.8 * drone * breath + rumble, 0.9)
+
+
+def synth_abyssal_silence(n, rng):
+    """Abyssal Silence: low F-Phrygian drone chord over a brown-noise floor,
+    very slow breathing. Deep stillness for anxiety relief / dark sleep."""
+    pad = pad_layer(n, rng, roots=[43.65, 87.31, 130.81, 138.59], detune=0.003, amp=0.16)
+    floor = colored_noise(n, rng, tilt=2.4, lowpass=200) * 0.25
+    breath = slow_env(n, rng, rate_hz=0.04, depth=0.4)
+    return _norm(lowpass(pad, corner=500) * breath + floor, 0.9)
+
+
+def _ember_pluck(freq, dur, rng):
+    m = int(dur * SR)
+    t = _t(m)
+    env = np.exp(-1.5 * t) * (1 - np.exp(-10 * t))
+    tone = np.sin(2 * np.pi * freq * t) + 0.3 * np.sin(2 * np.pi * freq * 2 * t)
+    return 0.3 * tone * env
+
+
+def synth_ember_focus(n, rng):
+    """Deep Ember Focus: generative plucked notes over A minor pentatonic
+    with a long reverb tail, plus a very quiet sub pad. Late-night study."""
+    ratio = _transpose_ratio(rng)
+    scale = ratio * np.array([110.0, 130.81, 146.83, 164.81, 196.00])  # A2 C3 D3 E3 G3
+    notes = np.zeros(n)
+    pos = 0
+    while pos < n:
+        f = float(rng.choice(scale))
+        ev = _ember_pluck(f, rng.uniform(1.6, 2.6), rng)
+        end = min(n, pos + len(ev))
+        notes[pos:end] += ev[:end - pos]
+        pos += int(rng.uniform(1.4, 2.4) * SR)
+    pad = pad_layer(n, rng, roots=[55.0 * ratio, 82.41 * ratio], amp=0.06)
+    wet = reverb(notes, rng, decay=3.0, mix=0.4)
+    return _norm(wet + pad, 0.9)
+
+
+def synth_cosmic_drift(n, rng):
+    """Cosmic Drift: warm D-Dorian pad with a slow modulation-index sweep.
+    Astral study / soft-focus space ambient."""
+    ratio = _transpose_ratio(rng)
+    pad = pad_layer(n, rng, roots=[73.42 * ratio, 110.00 * ratio, 130.81 * ratio,
+                                    164.81 * ratio, 185.00 * ratio],
+                     detune=0.006, amp=0.14)
+    mod = 1 + 0.15 * np.sin(2 * np.pi * 0.03 * _t(n))
+    return _norm(lowpass(pad * mod, corner=1800), 0.9)
+
+
+def synth_creative_flow(n, rng):
+    """Creative Flow: evolving Eb-Dorian pad with a slow bright/dark cutoff
+    sweep (crossfaded dual low-pass, cheap approximation of filter automation)."""
+    ratio = _transpose_ratio(rng)
+    pad = pad_layer(n, rng, roots=[77.78 * ratio, 116.54 * ratio, 138.59 * ratio,
+                                    174.61 * ratio, 185.00 * ratio],
+                     detune=0.005, amp=0.16)
+    bright = lowpass(pad, corner=2200)
+    dark = lowpass(pad, corner=500)
+    mixw = 0.5 + 0.5 * np.sin(2 * np.pi * 0.02 * _t(n))
+    return _norm(dark * (1 - mixw) + bright * mixw, 0.9)
+
+
+def synth_shadow_ink(n, rng):
+    """Shadow & Ink: moody G-minor pad under a thin rain-noise wash.
+    Gothic writing ambience."""
+    ratio = _transpose_ratio(rng)
+    pad = pad_layer(n, rng, roots=[98.00 * ratio, 116.54 * ratio, 146.83 * ratio,
+                                    174.61 * ratio], amp=0.15)
+    rain = colored_noise(n, rng, tilt=1.0, highpass=500, lowpass=4000) * 0.18
+    rain = rain * slow_env(n, rng, rate_hz=0.1, depth=0.2)
+    return _norm(lowpass(pad, corner=1500) + rain, 0.9)
+
+
+def _ruins_lead(n, rng, scale):
+    out = np.zeros(n)
+    pos = 0
+    while pos < n:
+        f = float(rng.choice(scale))
+        m = int(rng.uniform(2.0, 4.0) * SR)
+        t = _t(m)
+        vib = 1 + 0.006 * np.sin(2 * np.pi * 4.5 * t)
+        tone = np.sin(2 * np.pi * f * vib * t)
+        env = np.sin(np.linspace(0, np.pi, m)) ** 1.5
+        end = min(n - pos, m)
+        out[pos:pos + end] += 0.25 * tone[:end] * env[:end]
+        pos += m + int(rng.uniform(1.0, 3.0) * SR)
+    return out
+
+
+def synth_ethereal_ruins(n, rng):
+    """Ethereal Ruins: layered E-Aeolian pad with a sparse, soft flute-like
+    lead. Epic dark-fantasy backdrop."""
+    ratio = _transpose_ratio(rng)
+    pad = pad_layer(n, rng, roots=[82.41 * ratio, 123.47 * ratio, 196.00 * ratio,
+                                    293.66 * ratio], amp=0.13)
+    lead = _ruins_lead(n, rng, ratio * np.array([293.66, 329.63, 392.00, 440.00, 493.88]))
+    return _norm(lowpass(pad, corner=2000) + lead, 0.9)
+
+
+def _shimmer_grain(rng):
+    m = int(rng.uniform(0.15, 0.4) * SR)
+    f = rng.uniform(400, 900)
+    env = np.sin(np.linspace(0, np.pi, m)) ** 2
+    return 0.12 * env * np.sin(2 * np.pi * f * _t(m))
+
+
+def synth_ember_solitude(n, rng):
+    """Ember Solitude: F#-minor pad drenched in a long reverb tail with a
+    granular shimmer scattered on top. Melancholic quiet contemplation."""
+    ratio = _transpose_ratio(rng)
+    pad = pad_layer(n, rng, roots=[92.50 * ratio, 138.59 * ratio, 220.00 * ratio,
+                                    329.63 * ratio], amp=0.12)
+    wet = reverb(pad, rng, decay=4.0, mix=0.55)
+    shimmer = sprinkle(n, rng, count=max(6, n // (SR * 3)), make_event=_shimmer_grain)
+    return _norm(wet + shimmer, 0.9)
+
+
+def synth_markov_chamber(n, rng):
+    """Markov Chamber: a weighted random-walk melody over C pentatonic minor
+    (never repeats exactly) plus a very quiet sub pad. Endless focus soundtrack."""
+    ratio = _transpose_ratio(rng)
+    scale = ratio * np.array([130.81, 155.56, 174.61, 196.00, 233.08])
+    idx = len(scale) // 2
+    out = np.zeros(n)
+    pos = 0
+    while pos < n:
+        idx = int(np.clip(idx + rng.choice([-1, 0, 1], p=[0.35, 0.3, 0.35]), 0, len(scale) - 1))
+        f = scale[idx]
+        m = int(rng.uniform(0.8, 1.6) * SR)
+        t = _t(m)
+        env = np.exp(-2.0 * t) * (1 - np.exp(-20 * t))
+        tone = np.sin(2 * np.pi * f * t) + 0.2 * np.sin(2 * np.pi * f * 2 * t)
+        end = min(n - pos, m)
+        out[pos:pos + end] += 0.28 * tone[:end] * env[:end]
+        pos += m
+    pad = pad_layer(n, rng, roots=[65.41 * ratio, 98.00 * ratio], amp=0.05)
+    return _norm(reverb(out, rng, decay=2.0, mix=0.3) + pad, 0.9)
+
+
+def synth_ash_rain_wind(n, rng):
+    """Ash Rain & Wind: filtered wind + soft rain noise bands, continuous
+    organic background texture."""
+    wind = colored_noise(n, rng, tilt=1.6, lowpass=1000) * slow_env(n, rng, 0.05, 0.5)
+    rain = colored_noise(n, rng, tilt=0.8, highpass=600, lowpass=5000) * 0.35
+    rain = rain * slow_env(n, rng, rate_hz=0.15, depth=0.2)
+    return _norm(0.7 * wind + 0.6 * rain, 0.9)
+
+
+def synth_black_hole(n, rng):
+    """Black Hole Resonance: ultra-deep sub-bass sines (A0 + sub-harmonics)
+    with subtle soft saturation. Dark sci-fi ambient."""
+    drone = np.zeros(n)
+    for f in (27.5, 55.0, 13.75):
+        drone += sine(f, n, rng.uniform(0, 2 * np.pi))
+    drone = lowpass(drone, corner=140)
+    sat = np.tanh(drone * 2.2)
+    breath = slow_env(n, rng, rate_hz=0.03, depth=0.3)
+    return _norm(sat * breath, 0.9)
+
+
+def synth_monastic_echoes(n, rng):
+    """Monastic Echoes: detuned stacked sines imitating a deep vocal choir
+    drone (D minor pentatonic) with heavy reverb. Sacred, gothic ambience."""
+    ratio = _transpose_ratio(rng)
+    choir = np.zeros(n)
+    for f in (73.42 * ratio, 87.31 * ratio, 98.00 * ratio, 110.00 * ratio, 130.81 * ratio):
+        for k, amp in ((1.0, 1.0), (1.004, 1.0), (0.997, 1.0), (2.0, 0.25), (3.0, 0.12)):
+            choir += amp * sine(f * k, n, rng.uniform(0, 2 * np.pi))
+    choir = lowpass(_norm(choir), corner=1200) * 0.5
+    return _norm(reverb(choir, rng, decay=5.0, mix=0.6), 0.9)
+
+
+def _vinyl_pop(rng):
+    m = int(rng.uniform(0.01, 0.03) * SR)
+    env = np.exp(-np.linspace(0, 30, m))
+    return 0.08 * env * rng.standard_normal(m)
+
+
+def synth_obsidian_tower(n, rng):
+    """The Obsidian Tower: dark organ-like E-Phrygian pad with subtle
+    vinyl-crackle texture. Dark-academia study session, heavy focus."""
+    ratio = _transpose_ratio(rng)
+    pad = pad_layer(n, rng, roots=[82.41 * ratio, 87.31 * ratio, 98.00 * ratio,
+                                    123.47 * ratio, 146.83 * ratio], amp=0.15)
+    organ = lowpass(pad, corner=1400)
+    crackle = sprinkle(n, rng, count=max(20, n // (SR // 3)), make_event=_vinyl_pop)
+    return _norm(organ + crackle, 0.9)
+
+
 SYNTHS = {
     "rain": synth_rain,
     "rain_drops": synth_rain_drops,
@@ -527,6 +749,20 @@ SYNTHS = {
     "wind": synth_wind,
     "night": synth_night,
     "stream": synth_stream,
+    # "Aether & Ash" dark-ambient/drone/focus themes
+    "void_drone": synth_void_drone,
+    "abyssal_silence": synth_abyssal_silence,
+    "ember_focus": synth_ember_focus,
+    "cosmic_drift": synth_cosmic_drift,
+    "creative_flow": synth_creative_flow,
+    "shadow_ink": synth_shadow_ink,
+    "ethereal_ruins": synth_ethereal_ruins,
+    "ember_solitude": synth_ember_solitude,
+    "markov_chamber": synth_markov_chamber,
+    "ash_rain_wind": synth_ash_rain_wind,
+    "black_hole": synth_black_hole,
+    "monastic_echoes": synth_monastic_echoes,
+    "obsidian_tower": synth_obsidian_tower,
 }
 
 
