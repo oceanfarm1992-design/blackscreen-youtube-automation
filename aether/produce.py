@@ -4,17 +4,17 @@ Produce the day's video asset(s) end-to-end for the "Aether & Ash" channel.
 
 For a chosen theme (or the date-based rotation) and format, this:
   1. synthesizes theme audio            (../scripts/generate_theme_audio.py)
-  2. renders a branded video             (../scripts/make_video.py)
+  2. renders a branded, procedurally-animated video (make_animated_video.py)
   3. assigns the per-theme thumbnail     (assets/aether/thumbnails/gen/<key>.png)
   4. writes SEO metadata                 (make_metadata.py)
-  5. runs QC on the durations            (59s Short / 2-12h long-form)
+  5. runs QC on the durations            (59s Short / 870s (14:30) feature)
   6. writes a manifest and marks it "queued" for publishing
 
 Nothing is uploaded here. Publishing is a separate, credentialed step.
 
 Usage:
     python produce.py --format short                 # today's theme, 59s Short
-    python produce.py --format long --hours 3         # today's theme, 3h long-form
+    python produce.py --format long                   # today's theme, 14:30 feature
     python produce.py --theme void_drone --format both
 """
 import argparse
@@ -36,11 +36,8 @@ SHARED = os.path.join(ROOT, "scripts")  # engine shared with the "Meditated Slee
 BRAND = os.path.join(ROOT, "assets", "aether", "branding")
 THUMBNAIL = os.path.join(BRAND, "thumbnail_1280x720.png")
 THUMBS_GEN = os.path.join(ROOT, "assets", "aether", "thumbnails", "gen")
-FRAME_16x9 = os.path.join(BRAND, "brand_16x9.png")
-FRAME_9x16 = os.path.join(BRAND, "brand_9x16.png")
 
 SHORT_SECONDS = 59
-LONG_LOOP_SECONDS = 600  # 10 min seamless loop, stream-looped to full length by ffmpeg
 
 
 def run(cmd):
@@ -66,7 +63,7 @@ def ffprobe_resolution(path):
     return out.stdout.strip()
 
 
-def qc(fmt, video_path, hours):
+def qc(fmt, video_path):
     dur = ffprobe_duration(video_path)
     res = ffprobe_resolution(video_path)
     problems = []
@@ -76,22 +73,19 @@ def qc(fmt, video_path, hours):
         if res != "1080x1920":
             problems.append(f"Short resolution {res} is not 1080x1920 (vertical)")
     else:
-        target = hours * 3600
-        if not (T.LONG_HOURS_MIN * 3600 <= dur <= 12 * 3600):
-            problems.append(f"Long duration {dur/3600:.2f}h outside the "
-                            f"{T.LONG_HOURS_MIN}-12h window")
-        elif abs(dur - target) > max(120, 0.03 * target):
-            problems.append(f"Long duration {dur/3600:.2f}h is not near the "
-                            f"target {hours}h")
+        if abs(dur - T.FEATURE_SECONDS) > 5.0:
+            problems.append(f"Feature duration {dur:.1f}s is not ~{T.FEATURE_SECONDS}s")
         if res != "1920x1080":
-            problems.append(f"Long resolution {res} is not 1920x1080")
+            problems.append(f"Feature resolution {res} is not 1920x1080")
     return {"duration_sec": round(dur, 2), "resolution": res, "problems": problems}
 
 
-def produce_one(theme, fmt, out_dir, hours, seed):
+def produce_one(theme, fmt, out_dir, seed):
     key = theme["key"]
-    if fmt == "long":
-        hours = hours if hours else T.long_hours_for(key)
+    duration = SHORT_SECONDS if fmt == "short" else T.FEATURE_SECONDS
+    width, height = (1080, 1920) if fmt == "short" else (1920, 1080)
+    color = T.ACCENT_COLORS.get(key, "3c4b5f")
+
     stem = os.path.join(out_dir, f"{key}_{fmt}")
     audio = f"{stem}_audio.wav"
     video = f"{stem}.mp4"
@@ -99,28 +93,21 @@ def produce_one(theme, fmt, out_dir, hours, seed):
     meta = f"{stem}_meta.json"
 
     gta = os.path.join(SHARED, "generate_theme_audio.py")
-    mv = os.path.join(SHARED, "make_video.py")
+    mav = os.path.join(HERE, "make_animated_video.py")
     mm = os.path.join(HERE, "make_metadata.py")
 
     # Optional wellness frequency layers (tone/beat) plus tone-shaping.
     freq = T.synth_args(theme)
 
-    if fmt == "short":
-        run([sys.executable, gta, "--theme", theme["synth"], "--seconds", str(SHORT_SECONDS),
-             "--seed", str(seed), "--out", audio] + freq)
-        run([sys.executable, mv, "--audio", audio, "--background", FRAME_9x16,
-             "--duration-seconds", str(SHORT_SECONDS), "--fps", "24", "--out", video])
-        run([sys.executable, mm, "--theme", key, "--format", "short", "--out", meta])
-    else:
-        run([sys.executable, gta, "--theme", theme["synth"], "--loop-seconds", str(LONG_LOOP_SECONDS),
-             "--seed", str(seed), "--out", audio] + freq)
-        run([sys.executable, mv, "--audio", audio, "--background", FRAME_16x9,
-             "--duration-hours", str(hours), "--fps", "1", "--out", video])
-        run([sys.executable, mm, "--theme", key, "--format", "long", "--hours", str(hours),
-             "--out", meta])
+    run([sys.executable, gta, "--theme", theme["synth"], "--seconds", str(duration),
+         "--seed", str(seed), "--out", audio] + freq)
+    run([sys.executable, mav, "--audio", audio, "--duration-seconds", str(duration),
+         "--width", str(width), "--height", str(height), "--color", color,
+         "--seed", str(seed), "--out", video])
+    run([sys.executable, mm, "--theme", key, "--format", fmt, "--out", meta])
 
-    # Long-form gets the per-theme clickable thumbnail. Shorts use an
-    # auto-selected video frame -- skip the custom thumbnail to save API quota.
+    # Long-form (feature) gets the per-theme clickable thumbnail. Shorts use
+    # an auto-selected video frame -- skip the custom thumbnail to save quota.
     if fmt == "long":
         gen_thumb = os.path.join(THUMBS_GEN, f"{key}.png")
         src_thumb = gen_thumb if os.path.exists(gen_thumb) else THUMBNAIL
@@ -128,7 +115,7 @@ def produce_one(theme, fmt, out_dir, hours, seed):
         thumbnail_rel = os.path.relpath(thumb, ROOT)
     else:
         thumbnail_rel = None
-    report = qc(fmt, video, hours)
+    report = qc(fmt, video)
 
     manifest = {
         "date": date.today().isoformat(),
@@ -158,19 +145,16 @@ def main():
                    help="required unless --daily is used")
     p.add_argument("--daily", action="store_true",
                    help=f"produce the day's batch: {T.DAILY_COUNT} videos "
-                        f"({T.LONGS_PER_DAY} long + {T.SHORTS_PER_DAY} short)")
+                        f"({T.LONGS_PER_DAY} feature + {T.SHORTS_PER_DAY} short)")
     p.add_argument("--count", type=int, default=T.DAILY_COUNT,
                    help="number of musics per day for --daily")
     p.add_argument("--shorts", type=int, default=0,
                    help="test batch: produce Shorts for the first N of today's musics")
     p.add_argument("--longs", type=int, default=0,
-                   help="test batch: produce long-forms for the first M of today's musics")
+                   help="test batch: produce features for the first M of today's musics")
     p.add_argument("--slot", type=int, default=None,
                    help="produce ONE video: slot 0..(DAILY_COUNT-1) of today's rotation "
-                        "(slots < LONGS_PER_DAY = long, rest = short)")
-    p.add_argument("--hours", type=int, default=None,
-                   help="override long-form length; default = per-theme map "
-                        "(most themes 3h, sleep/meditation themes 8h)")
+                        "(slots < LONGS_PER_DAY = feature, rest = short)")
     p.add_argument("--seed", type=int, default=None, help="defaults to YYYYMMDD")
     p.add_argument("--out-dir", default="out")
     args = p.parse_args()
@@ -188,32 +172,30 @@ def main():
         theme = selection[args.slot % len(selection)]
         fmt = "long" if args.slot < T.LONGS_PER_DAY else "short"
         print(f"Slot {args.slot}: {theme['key']} {fmt}")
-        results.append(produce_one(theme, fmt, args.out_dir, args.hours, seed + args.slot))
+        results.append(produce_one(theme, fmt, args.out_dir, seed + args.slot))
     elif args.shorts or args.longs:
         need = max(args.shorts, args.longs, 1)
         selection = T.daily_selection(count=max(need, T.DAILY_COUNT))
-        print(f"Test batch: {args.longs} long(s) + {args.shorts} short(s) from: "
+        print(f"Test batch: {args.longs} feature(s) + {args.shorts} short(s) from: "
               + ", ".join(t["key"] for t in selection[:need]))
         for i in range(args.longs):
-            results.append(produce_one(selection[i], "long", args.out_dir, args.hours,
-                                       seed + i * 10))
+            results.append(produce_one(selection[i], "long", args.out_dir, seed + i * 10))
         for i in range(args.shorts):
-            results.append(produce_one(selection[i], "short", args.out_dir, args.hours,
-                                       seed + i * 10 + 1))
+            results.append(produce_one(selection[i], "short", args.out_dir, seed + i * 10 + 1))
     elif args.daily:
         selection = T.daily_selection(count=T.DAILY_COUNT)
         longs = selection[:T.LONGS_PER_DAY]
         shorts = selection[T.LONGS_PER_DAY:T.LONGS_PER_DAY + T.SHORTS_PER_DAY]
-        print("Daily batch: " + ", ".join(t["key"] for t in longs) + " (long) + "
+        print("Daily batch: " + ", ".join(t["key"] for t in longs) + " (feature) + "
               + ", ".join(t["key"] for t in shorts) + " (short)")
         for i, theme in enumerate(longs):
-            results.append(produce_one(theme, "long", args.out_dir, args.hours, seed + i))
+            results.append(produce_one(theme, "long", args.out_dir, seed + i))
         for i, theme in enumerate(shorts):
-            results.append(produce_one(theme, "short", args.out_dir, args.hours, seed + 100 + i))
+            results.append(produce_one(theme, "short", args.out_dir, seed + 100 + i))
     else:
         theme = T.resolve_theme(args.theme)
         formats = ["short", "long"] if args.format == "both" else [args.format]
-        results = [produce_one(theme, f, args.out_dir, args.hours, seed + i)
+        results = [produce_one(theme, f, args.out_dir, seed + i)
                    for i, f in enumerate(formats)]
 
     failed = [r for r in results if r["status"] != "queued"]

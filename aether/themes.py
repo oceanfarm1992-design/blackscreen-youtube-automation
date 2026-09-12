@@ -15,29 +15,38 @@ from datetime import date
 # Day 0 of the rotation -- the channel's automation start date.
 ANCHOR = date(2026, 9, 12)
 
-# Long-form length in hours. Study/focus/drone tracks run 3h (the "3 Hour
-# Study Mix" format this channel's thumbnail concepts were built around);
-# the two sleep/meditation tracks run longer (8h), matching how deep-sleep
-# content performs on the sibling "Meditated Sleeping" channel.
-LONG_HOURS_DEFAULT = 3
-LONG_HOURS_MIN = 2      # QC floor for a "long-form"
-LONG_HOURS = {
-    "calm_the_night": 8,
-    "slumber_of_ash": 8,
-}
+# Every long-form is now a fixed-length "feature" video (real generative
+# animation, not an hours-long static background) -- see
+# aether/make_animated_video.py. No more per-theme hour targets.
+FEATURE_SECONDS = 870  # 14:30
 
-
-def long_hours_for(theme_key: str) -> int:
-    """Content-matched long-form duration for a theme (falls back to 3h)."""
-    return LONG_HOURS.get(theme_key, LONG_HOURS_DEFAULT)
-
-# Daily publishing plan: Shorts only for now (no long-forms), 2/day on a
-# SINGLE OAuth/Cloud project (2*1600 upload ~= 3,200 / 10,000 units -- very
-# comfortable headroom). Bump LONGS_PER_DAY back up once ready to add
-# long-form uploads.
-LONGS_PER_DAY = 0
-SHORTS_PER_DAY = 2
+# Daily publishing plan: 1 feature (14:30) + 1 Short per day, on a SINGLE
+# OAuth/Cloud project (1*1650(+thumb) + 1*1600 + 50 playlist-add ~= 3,300 /
+# 10,000 units -- very comfortable headroom).
+LONGS_PER_DAY = 1
+SHORTS_PER_DAY = 1
 DAILY_COUNT = LONGS_PER_DAY + SHORTS_PER_DAY
+
+# Accent color (hex) for each theme's generative animated background --
+# drives the colorchannelmixer tint in make_animated_video.py. Chosen to
+# match each theme's mood/thumbnail palette.
+ACCENT_COLORS = {
+    "void_drone": "28325a",
+    "abyssal_silence": "2d4173",
+    "ember_focus": "ff7a33",
+    "cosmic_drift": "7850c8",
+    "creative_flow": "c85a3c",
+    "shadow_ink": "3c4b5f",
+    "calm_the_night": "32376e",
+    "slumber_of_ash": "4b418c",
+    "ethereal_ruins": "967846",
+    "ember_solitude": "af5f37",
+    "markov_chamber": "734bb9",
+    "ash_rain_wind": "50696e",
+    "black_hole": "642828",
+    "monastic_echoes": "917341",
+    "obsidian_tower": "37415a",
+}
 
 # Ordered rotation. `synth` names a function in scripts/generate_theme_audio.py.
 THEMES = [
@@ -47,7 +56,7 @@ THEMES = [
         "synth": "void_drone",
         "emoji": "\U0001F311",  # 🌑
         "short_title": "Void Drones \U0001F311 Deep Dark Ambient Drone #shorts",
-        "long_title": "Void Drones \U0001F311 {hours} Hours Deep Cosmic Drone for Focus & Sleep | Black Screen",
+        "long_title": "Void Drones \U0001F311 14 Minute Deep Cosmic Drone for Focus & Sleep | Dark Ambient Visualizer",
         "description": (
             "A deep, layered sub-bass drone for cosmic isolation and heavy "
             "focus. Dark, minimal, and immersive — let the low rumble clear "
@@ -56,7 +65,7 @@ THEMES = [
         "tags": [
             "dark ambient", "drone music", "dark drone", "deep drone music",
             "ambient drone", "sub bass drone", "dark ambient music",
-            "cosmic ambient", "black screen", "focus music", "sleep music",
+            "cosmic ambient", "focus music", "sleep music",
             "meditation music", "dark academia music", "study music",
         ],
     },
@@ -66,14 +75,14 @@ THEMES = [
         "synth": "abyssal_silence",
         "emoji": "\U0001F30C",  # 🌌
         "short_title": "Abyssal Silence \U0001F30C Dark Ambient for Anxiety Relief #shorts",
-        "long_title": "Abyssal Silence \U0001F30C {hours} Hours Dark Ambient for Anxiety Relief & Deep Sleep | Black Screen",
+        "long_title": "Abyssal Silence \U0001F30C 14 Minute Dark Ambient for Anxiety Relief & Deep Sleep | Dark Ambient Visualizer",
         "description": (
             "A still, low drone chord over a soft dark noise floor — deep "
             "stillness for anxiety relief, calm, and dark, restful sleep."
         ),
         "tags": [
             "dark ambient", "anxiety relief music", "drone music",
-            "deep sleep music", "dark drone", "calm music", "black screen",
+            "deep sleep music", "dark drone", "calm music",
             "ambient music", "relaxing dark music", "sleep sounds",
             "stress relief music", "meditation music",
         ],
@@ -84,7 +93,7 @@ THEMES = [
         "synth": "ember_focus",
         "emoji": "\U0001F525",  # 🔥
         "short_title": "Deep Ember Focus \U0001F525 Late Night Study Music #shorts",
-        "long_title": "Deep Ember Focus \U0001F525 {hours} Hours Study Music for Late Night Coding & Deep Work | Black Screen",
+        "long_title": "Deep Ember Focus \U0001F525 14 Minute Study Music for Late Night Coding & Deep Work | Dark Ambient Visualizer",
         "description": (
             "Gentle plucked tones with a long reverb tail over a warm sub "
             "pad — minimal-distraction music for late night coding, deep "
@@ -93,7 +102,7 @@ THEMES = [
         "tags": [
             "study music", "focus music", "deep work music", "coding music",
             "concentration music", "dark academia music", "ambient study music",
-            "black screen", "productivity music", "generative music",
+            "productivity music", "generative music",
             "instrumental study music", "dark ambient",
         ],
     },
@@ -103,7 +112,7 @@ THEMES = [
         "synth": "cosmic_drift",
         "emoji": "\U00002728",  # ✨
         "short_title": "Cosmic Drift \U00002728 Astral Study & Space Ambient #shorts",
-        "long_title": "Cosmic Drift \U00002728 {hours} Hours Astral Space Ambient for Study & Soft Focus | Black Screen",
+        "long_title": "Cosmic Drift \U00002728 14 Minute Astral Space Ambient for Study & Soft Focus | Dark Ambient Visualizer",
         "description": (
             "A warm, slowly shifting pad drifting through soft modulation — "
             "astral space ambient for studying, soft focus, and unwinding."
@@ -111,7 +120,7 @@ THEMES = [
         "tags": [
             "space ambient", "study music", "focus music", "ambient music",
             "cosmic music", "soft focus music", "dark academia music",
-            "black screen", "chill study music", "concentration music",
+            "chill study music", "concentration music",
             "relaxing ambient", "meditation music",
         ],
     },
@@ -121,7 +130,7 @@ THEMES = [
         "synth": "creative_flow",
         "emoji": "\U0001FAB6",  # 🪶
         "short_title": "Creative Flow \U0001FAB6 Inspiring Writing Ambient #shorts",
-        "long_title": "Creative Flow \U0001FAB6 {hours} Hours Inspiring Writing Ambient for Fantasy & Dark Storytelling | Black Screen",
+        "long_title": "Creative Flow \U0001FAB6 14 Minute Inspiring Writing Ambient for Fantasy & Dark Storytelling | Dark Ambient Visualizer",
         "description": (
             "An evolving pad with a slow sweeping tone, built for fantasy "
             "writing, dark storytelling, and creative flow. Let the mood "
@@ -130,7 +139,7 @@ THEMES = [
         "tags": [
             "writing music", "writing ambient", "fantasy music", "focus music",
             "dark academia music", "creative writing music", "ambient music",
-            "black screen", "study music", "concentration music",
+            "study music", "concentration music",
             "storytelling music", "instrumental ambient",
         ],
     },
@@ -140,7 +149,7 @@ THEMES = [
         "synth": "shadow_ink",
         "emoji": "\U0001F58B️",  # 🖋️
         "short_title": "Shadow & Ink \U0001F58B️ Moody Gothic Writing Ambient #shorts",
-        "long_title": "Shadow & Ink \U0001F58B️ {hours} Hours Moody Gothic Writing Ambient with Rain | Black Screen",
+        "long_title": "Shadow & Ink \U0001F58B️ 14 Minute Moody Gothic Writing Ambient with Rain | Dark Ambient Visualizer",
         "description": (
             "A moody minor-key pad under a soft rain wash — gothic writing "
             "ambience for dark fiction, journaling, and quiet focus."
@@ -148,7 +157,7 @@ THEMES = [
         "tags": [
             "writing music", "gothic music", "dark academia music",
             "rain ambience", "writing ambient", "focus music", "study music",
-            "dark ambient", "black screen", "rainy day music",
+            "dark ambient", "rainy day music",
             "concentration music", "moody ambient",
         ],
     },
@@ -159,7 +168,7 @@ THEMES = [
         "tone": "432", "beat": "delta", "beat_type": "binaural",
         "emoji": "\U0001F319",  # 🌙
         "short_title": "Calm the Night \U0001F319 432 Hz Anxiety Relief & Sleep #shorts",
-        "long_title": "Calm the Night \U0001F319 {hours} Hours 432 Hz Anxiety Relief & Deep Sleep Soundscape | Black Screen",
+        "long_title": "Calm the Night \U0001F319 14 Minute 432 Hz Anxiety Relief & Deep Sleep Soundscape | Dark Ambient Visualizer",
         "description": (
             "A 432 Hz tuned soundscape with gentle delta-rate binaural beats "
             "over warm sleep music, for insomnia relief and deep, restorative "
@@ -168,7 +177,7 @@ THEMES = [
         "tags": [
             "432 hz", "anxiety relief music", "sleep music", "deep sleep music",
             "binaural beats sleep", "delta waves", "insomnia relief music",
-            "meditation music", "black screen", "healing frequency",
+            "meditation music", "healing frequency",
             "calm music", "relaxing sleep music",
         ],
     },
@@ -179,7 +188,7 @@ THEMES = [
         "tone": "246.9", "beat": "theta", "beat_type": "binaural",
         "emoji": "\U0001F4A4",  # 💤
         "short_title": "Slumber of Ash \U0001F4A4 Restorative Sleep & Binaural Beats #shorts",
-        "long_title": "Slumber of Ash \U0001F4A4 {hours} Hours Restorative Sleep Music with Binaural Beats | Black Screen",
+        "long_title": "Slumber of Ash \U0001F4A4 14 Minute Restorative Sleep Music with Binaural Beats | Dark Ambient Visualizer",
         "description": (
             "A dark, warm sleep soundscape layered with gentle binaural "
             "beats for deep, restorative rest. Use headphones for the "
@@ -188,7 +197,7 @@ THEMES = [
         "tags": [
             "deep sleep music", "binaural beats sleep", "restorative sleep",
             "sleep music", "brain waves", "insomnia relief music",
-            "meditation music", "black screen", "relaxing music",
+            "meditation music", "relaxing music",
             "healing music", "calm sleep music",
         ],
     },
@@ -198,7 +207,7 @@ THEMES = [
         "synth": "ethereal_ruins",
         "emoji": "\U0001FAA8",  # 🪨
         "short_title": "Ethereal Ruins \U0001FAA8 Epic Dark Fantasy Ambience #shorts",
-        "long_title": "Ethereal Ruins \U0001FAA8 {hours} Hours Epic Dark Fantasy Ambience for Focus & Study | Black Screen",
+        "long_title": "Ethereal Ruins \U0001FAA8 14 Minute Epic Dark Fantasy Ambience for Focus & Study | Dark Ambient Visualizer",
         "description": (
             "Layered pads and a soft, sparse melodic lead conjure an ancient, "
             "twilight-fog atmosphere — epic dark fantasy backdrop for focus, "
@@ -207,7 +216,7 @@ THEMES = [
         "tags": [
             "fantasy music", "dark ambient", "epic ambient music",
             "cinematic ambient", "dnd music", "study music", "focus music",
-            "dark academia music", "black screen", "atmospheric music",
+            "dark academia music", "atmospheric music",
             "medieval fantasy music", "ambient music",
         ],
     },
@@ -217,7 +226,7 @@ THEMES = [
         "synth": "ember_solitude",
         "emoji": "\U0001F3D5️",  # 🏕️
         "short_title": "Ember Solitude \U0001F3D5️ Melancholic Dark Ambient #shorts",
-        "long_title": "Ember Solitude \U0001F3D5️ {hours} Hours Melancholic Dark Ambient for Quiet Reflection | Black Screen",
+        "long_title": "Ember Solitude \U0001F3D5️ 14 Minute Melancholic Dark Ambient for Quiet Reflection | Dark Ambient Visualizer",
         "description": (
             "A slow, reverb-drenched pad with a soft granular shimmer — "
             "melancholic, reflective dark ambient for quiet contemplation."
@@ -225,7 +234,7 @@ THEMES = [
         "tags": [
             "dark ambient", "melancholic music", "ambient music",
             "reflective music", "cinematic ambient", "focus music",
-            "study music", "black screen", "atmospheric music",
+            "study music", "atmospheric music",
             "calm dark music", "instrumental ambient", "meditation music",
         ],
     },
@@ -235,7 +244,7 @@ THEMES = [
         "synth": "markov_chamber",
         "emoji": "\U0001F52E",  # 🔮
         "short_title": "Markov Chamber \U0001F52E Endless Generative Focus Music #shorts",
-        "long_title": "Markov Chamber \U0001F52E {hours} Hours Endless Generative Focus Soundtrack | Black Screen",
+        "long_title": "Markov Chamber \U0001F52E 14 Minute Endless Generative Focus Soundtrack | Dark Ambient Visualizer",
         "description": (
             "A generative, ever-shifting melody that never repeats exactly "
             "the same way twice — an endless, non-distracting soundtrack for "
@@ -244,7 +253,7 @@ THEMES = [
         "tags": [
             "generative music", "focus music", "study music",
             "concentration music", "ambient music", "deep work music",
-            "productivity music", "black screen", "dark academia music",
+            "productivity music", "dark academia music",
             "instrumental focus music", "coding music", "ambient focus music",
         ],
     },
@@ -254,7 +263,7 @@ THEMES = [
         "synth": "ash_rain_wind",
         "emoji": "\U0001F32B️",  # 🌫️
         "short_title": "Ash Rain & Wind \U0001F32B️ Dark Nature Noise for Relaxation #shorts",
-        "long_title": "Ash Rain & Wind \U0001F32B️ {hours} Hours Dark Nature Noise for Relaxation, Focus & Sleep | Black Screen",
+        "long_title": "Ash Rain & Wind \U0001F32B️ 14 Minute Dark Nature Noise for Relaxation, Focus & Sleep | Dark Ambient Visualizer",
         "description": (
             "Filtered wind and soft rain woven into an organic dark noise "
             "bed — for relaxation, background focus, and sleep."
@@ -262,7 +271,7 @@ THEMES = [
         "tags": [
             "rain and wind sounds", "nature noise", "relaxing noise",
             "sleep sounds", "focus noise", "wind sounds", "rain sounds",
-            "black screen", "ambient noise", "calming noise",
+            "ambient noise", "calming noise",
             "dark nature sounds", "study noise",
         ],
     },
@@ -272,7 +281,7 @@ THEMES = [
         "synth": "black_hole",
         "emoji": "\U000026AB",  # ⚫
         "short_title": "Black Hole Resonance \U000026AB Ultra Deep Sub Bass Ambient #shorts",
-        "long_title": "Black Hole Resonance \U000026AB {hours} Hours Ultra Deep Sub Bass Dark Sci-Fi Ambient | Black Screen",
+        "long_title": "Black Hole Resonance \U000026AB 14 Minute Ultra Deep Sub Bass Dark Sci-Fi Ambient | Dark Ambient Visualizer",
         "description": (
             "Ultra-deep sub-bass tones for a dark, sci-fi ambient atmosphere "
             "— best felt on a subwoofer or headphones. For deep focus, "
@@ -281,7 +290,7 @@ THEMES = [
         "tags": [
             "sub bass", "dark ambient", "sci fi ambient", "drone music",
             "deep bass music", "space ambient", "meditation music",
-            "black screen", "focus music", "sleep music", "ambient drone",
+            "focus music", "sleep music", "ambient drone",
             "cosmic music",
         ],
     },
@@ -291,7 +300,7 @@ THEMES = [
         "synth": "monastic_echoes",
         "emoji": "\U0001F6D5",  # 🛕
         "short_title": "Monastic Echoes \U0001F6D5 Sacred Dark Chant Ambient #shorts",
-        "long_title": "Monastic Echoes \U0001F6D5 {hours} Hours Sacred Dark Chant Ambient for Deep Focus & Meditation | Black Screen",
+        "long_title": "Monastic Echoes \U0001F6D5 14 Minute Sacred Dark Chant Ambient for Deep Focus & Meditation | Dark Ambient Visualizer",
         "description": (
             "Deep, choir-like drones washed in cathedral reverb — sacred, "
             "gothic ambience for deep focus, meditation, and contemplation."
@@ -299,7 +308,7 @@ THEMES = [
         "tags": [
             "gothic ambient", "sacred music", "dark ambient", "choir ambient",
             "meditation music", "cathedral ambient", "focus music",
-            "black screen", "dark academia music", "ambient chant",
+            "dark academia music", "ambient chant",
             "atmospheric music", "contemplative music",
         ],
     },
@@ -309,7 +318,7 @@ THEMES = [
         "synth": "obsidian_tower",
         "emoji": "\U0001F5FC",  # 🗼
         "short_title": "The Obsidian Tower \U0001F5FC Dark Academia Study Session #shorts",
-        "long_title": "The Obsidian Tower \U0001F5FC {hours} Hours Dark Academia Study Ambient with Vinyl Crackle | Black Screen",
+        "long_title": "The Obsidian Tower \U0001F5FC 14 Minute Dark Academia Study Ambient with Vinyl Crackle | Dark Ambient Visualizer",
         "description": (
             "A dark organ-like pad with soft vinyl-crackle texture — heavy "
             "focus ambience for dark academia study sessions and deep work."
@@ -317,7 +326,7 @@ THEMES = [
         "tags": [
             "dark academia music", "study music", "focus music",
             "vinyl crackle music", "ambient study music", "concentration music",
-            "gothic ambient", "black screen", "deep work music",
+            "gothic ambient", "deep work music",
             "instrumental study music", "dark ambient", "productivity music",
         ],
     },
@@ -330,10 +339,12 @@ BRAND_TAGLINE = "Dark Ambient. Deep Focus."
 # ones. make_metadata dedupes and packs tags up to YouTube's 500-char limit.
 GLOBAL_TAGS = [
     "dark ambient music", "drone music", "study music", "deep focus music",
-    "dark academia music", "black screen", "ambient music for writing",
+    "dark academia music", "ambient music for writing",
     "sleep music", "binaural beats", "concentration music",
     "atmospheric music", "cinematic ambient", "meditation music",
     "calm music", "background music for studying", "generative music",
+    "ambient visualizer", "dark ambient animation", "generative art",
+    "aesthetic background video", "screensaver visuals",
 ]
 
 # Natural-language phrase for the description (kept short and readable).
@@ -344,37 +355,37 @@ PLAYLISTS = {
     "dark_drone": {
         "title": "Dark Drone & Deep Bass \U0001F311",
         "description": "Deep sub-bass drones and dark ambient tones for "
-                       "focus, meditation, and sleep. Black screen.",
+                       "focus, meditation, and sleep.",
         "themes": ["void_drone", "abyssal_silence", "black_hole"],
     },
     "generative_study": {
         "title": "Focus & Generative Study \U0001F3AF",
         "description": "Generative and ambient focus tracks for deep work, "
-                       "study, and concentration. Black screen.",
+                       "study, and concentration.",
         "themes": ["ember_focus", "cosmic_drift", "markov_chamber"],
     },
     "writing_ambient": {
         "title": "Writing & Dark Academia Ambient \U0001FAB6",
         "description": "Moody, atmospheric ambient music for writing, dark "
-                       "academia study sessions, and deep focus. Black screen.",
+                       "academia study sessions, and deep focus.",
         "themes": ["creative_flow", "shadow_ink", "monastic_echoes", "obsidian_tower"],
     },
     "sleep_meditation": {
         "title": "Dark Ambient Sleep & Meditation \U0001F319",
         "description": "Dark, warm soundscapes and binaural beats for "
-                       "anxiety relief, meditation, and deep sleep. Black screen.",
+                       "anxiety relief, meditation, and deep sleep.",
         "themes": ["calm_the_night", "slumber_of_ash"],
     },
     "cinematic": {
         "title": "Cinematic Dark Atmosphere \U0001F3AC",
         "description": "Epic, cinematic dark ambient soundscapes for focus, "
-                       "study, and quiet reflection. Black screen.",
+                       "study, and quiet reflection.",
         "themes": ["ethereal_ruins", "ember_solitude"],
     },
     "noise": {
         "title": "Ash Noise & Atmosphere \U0001F32B️",
         "description": "Filtered noise and nature textures for relaxation, "
-                       "background focus, and sleep. Black screen.",
+                       "background focus, and sleep.",
         "themes": ["ash_rain_wind"],
     },
 }

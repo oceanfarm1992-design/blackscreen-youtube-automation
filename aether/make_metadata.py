@@ -3,7 +3,7 @@
 Build SEO metadata (title, description, tags) for an "Aether & Ash" theme + format.
 
 Usage:
-    python make_metadata.py --theme void_drone --format long --hours 3 --out meta_long.json
+    python make_metadata.py --theme void_drone --format long --out meta_long.json
     python make_metadata.py --theme auto --format short --out meta_short.json
 
 Writes a JSON file consumed by the uploader, plus prints a human-readable summary.
@@ -46,21 +46,22 @@ def pack_tags(theme: dict, fmt: str) -> list:
     return tags
 
 
-def build_metadata(theme: dict, fmt: str, hours: int) -> dict:
-    if fmt == "short":
-        title = theme["short_title"]
-    else:
-        title = theme["long_title"].format(hours=hours)
+def build_metadata(theme: dict, fmt: str) -> dict:
+    title = theme["short_title"] if fmt == "short" else theme["long_title"]
 
     # YouTube hard-caps titles at 100 characters.
     title = title[:100]
 
-    lead = f"{hours} Hours of {theme['name']}" if fmt == "long" else theme["name"]
+    lead = f"14 Minutes of {theme['name']}" if fmt == "long" else theme["name"]
     hashtags = " ".join("#" + t.replace(" ", "") for t in theme["tags"][:3])
     if fmt == "short":
         hashtags += " #shorts"
+    visual_line = (
+        " Paired with a slow, generative ambient animation — unique every "
+        "time, never a static loop." if fmt == "long" else ""
+    )
     description = (
-        f"{lead} on a calm black screen.\n\n"
+        f"{lead}.{visual_line}\n\n"
         f"{theme['description']}\n\n"
         f"\U0001F3A7 How to use: play at a low, comfortable volume to focus, "
         f"study, write, meditate, or relax — leave it on for uninterrupted work.\n\n"
@@ -74,7 +75,6 @@ def build_metadata(theme: dict, fmt: str, hours: int) -> dict:
     return {
         "theme": theme["key"],
         "format": fmt,
-        "hours": hours if fmt == "long" else None,
         "title": title,
         "description": description,
         "tags": tags,
@@ -87,12 +87,11 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--theme", default="auto", help="theme key or 'auto' for date rotation")
     p.add_argument("--format", required=True, choices=["short", "long"])
-    p.add_argument("--hours", type=int, default=T.LONG_HOURS_DEFAULT)
     p.add_argument("--out", default="metadata.json")
     args = p.parse_args()
 
     theme = T.resolve_theme(args.theme)
-    meta = build_metadata(theme, args.format, args.hours)
+    meta = build_metadata(theme, args.format)
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
 

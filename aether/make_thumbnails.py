@@ -91,8 +91,7 @@ def glow(img, color):
 
 
 def duration_label(key):
-    h = T.long_hours_for(key)
-    return f"{h} HOURS"
+    return "14 MIN"
 
 
 def build(key, lines, color):

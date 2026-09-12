@@ -78,6 +78,18 @@ def ember_icon(size):
     return ImageChops.screen(img, glow)
 
 
+def ember_icon_rgba(size):
+    """Standalone transparent-background version of ember_icon(), for
+    overlaying onto the animated video (see make_animated_video.py). Alpha
+    is derived from brightness, so the black canvas becomes transparent and
+    only the glowing ember rune itself is visible."""
+    rgb = ember_icon(size).convert("RGB")
+    alpha = rgb.convert("L").point(lambda v: min(255, int(v * 1.3)))
+    out = rgb.copy()
+    out.putalpha(alpha)
+    return out
+
+
 def build(w, h, layout):
     img = Image.new("RGB", (w, h), (0, 0, 0))
 
@@ -127,7 +139,11 @@ def main():
         "tag_size": 30,
     })
     tall.save(os.path.join(HERE, "brand_9x16.png"), "PNG", optimize=True)
-    print("Wrote brand_16x9.png and brand_9x16.png")
+
+    icon = ember_icon_rgba((300, 300))
+    icon.save(os.path.join(HERE, "icon.png"), "PNG", optimize=True)
+
+    print("Wrote brand_16x9.png, brand_9x16.png, and icon.png")
 
 
 if __name__ == "__main__":

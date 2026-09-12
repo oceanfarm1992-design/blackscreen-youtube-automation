@@ -1,20 +1,21 @@
 name: daily-produce-aether
 
 # Produces "Aether & Ash" videos, ONE per run, spread across the day so runs
-# never overlap. Shorts-only for now (no long-forms) -- 2 Shorts/day (59s,
-# 1080x1920), on the branded dark frame. Bump LONGS_PER_DAY in
-# aether/themes.py (and add more crons/slots here) once ready for long-forms.
+# never overlap. 1 feature (14:30, 1920x1080, real procedurally-animated
+# visual -- see aether/make_animated_video.py) + 1 Short (59s, 1080x1920)
+# per day.
 #
 # The 2 runs fire 12h apart. Each cron maps to a "slot" 0..1 (see
-# aether/produce.py --slot); with LONGS_PER_DAY=0 both slots are Shorts.
+# aether/produce.py --slot): slot 0 = the feature, slot 1 = the Short.
 # Musics rotate through the whole theme library in a continuous cycle. Runs
 # on a PUBLIC repo so standard-runner minutes are free and unmetered.
 #
 # Scheduled on ODD hours so this never overlaps the "Meditated Sleeping"
 # channel's daily-produce workflow (which uses even hours only).
 #
-# YouTube quota: 10,000 units/day. 2 Shorts/day = 2*1600 ~= 3,200 / 10,000 --
-# very comfortable headroom on a single OAuth project.
+# YouTube quota: 10,000 units/day. 1 feature + 1 short/day = 1*(1600+50) +
+# 1*1600 + 50 playlist-add ~= 3,300 / 10,000 -- very comfortable headroom on
+# a single OAuth project.
 #
 # Optional repo Secrets (Settings -> Secrets and variables -> Actions). If
 # present, the day's videos are uploaded to the Aether & Ash channel as
@@ -25,13 +26,10 @@ name: daily-produce-aether
 
 on:
   schedule:
-    - cron: "0 5 * * *"     # slot 0   05:00 UTC  short
+    - cron: "0 5 * * *"     # slot 0   05:00 UTC  feature (14:30)
     - cron: "0 17 * * *"    # slot 1   17:00 UTC  short
   workflow_dispatch:
     inputs:
-      hours:
-        description: "Long-form length override (blank = per-theme: most 3h, sleep/meditation 8h)"
-        default: ""
       privacy:
         description: "Upload visibility: private | unlisted | public"
         default: "public"
@@ -39,7 +37,7 @@ on:
         description: "Test only: number of Shorts (0 = full daily batch)"
         default: "0"
       longs:
-        description: "Test only: number of long-forms (0 = full daily batch)"
+        description: "Test only: number of features (0 = full daily batch)"
         default: "0"
 
 # Least privilege: the auto-injected GITHUB_TOKEN only ever needs to read the
@@ -89,19 +87,15 @@ jobs:
           SHORTS="${{ github.event.inputs.shorts || 0 }}"
           LONGS="${{ github.event.inputs.longs || 0 }}"
           SLOT="${{ steps.slot.outputs.slot }}"
-          HOURS="${{ github.event.inputs.hours }}"
-          HOURS_ARG=""
-          [ -n "$HOURS" ] && HOURS_ARG="--hours $HOURS"
           if [ "$SHORTS" != "0" ] || [ "$LONGS" != "0" ]; then
-            echo "Manual test batch: $LONGS long(s) + $SHORTS short(s)"
-            python aether/produce.py --shorts "$SHORTS" --longs "$LONGS" \
-              $HOURS_ARG --out-dir out
+            echo "Manual test batch: $LONGS feature(s) + $SHORTS short(s)"
+            python aether/produce.py --shorts "$SHORTS" --longs "$LONGS" --out-dir out
           elif [ -n "$SLOT" ]; then
             echo "Scheduled slot $SLOT"
-            python aether/produce.py --slot "$SLOT" $HOURS_ARG --out-dir out
+            python aether/produce.py --slot "$SLOT" --out-dir out
           else
             echo "Manual full daily batch"
-            python aether/produce.py --daily $HOURS_ARG --out-dir out
+            python aether/produce.py --daily --out-dir out
           fi
 
       - name: Show queue manifests
