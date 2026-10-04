@@ -1080,6 +1080,181 @@ def synth_ink_parchment(n, rng):
     return _norm(scratch + piano + lowpass(pad, corner=1200), 0.9)
 
 
+# --------------------------------------------------------------------------- #
+# "The Static Horizon" theme synths (nostalgic, tape-degraded hauntology /
+# liminal-space ambient -- late-night driving, forgotten spaces) -- built
+# from the toolkit above, plus tape-specific coloring (hiss, wobble, lowpass
+# "muffled through a cassette" melodies).
+# --------------------------------------------------------------------------- #
+def _tape_hiss(n, rng, level=0.06):
+    return colored_noise(n, rng, tilt=0.4, highpass=1500, lowpass=9000) * level
+
+
+def _tape_pad_note(freq, dur, rng):
+    """Warm, lowpassed, slightly wobbly synth pad note -- a retro synth
+    heard through an old cassette (wow & flutter pitch wobble)."""
+    m = int(dur * SR)
+    t = _t(m)
+    wobble = (1 + 0.004 * np.sin(2 * np.pi * 5.0 * t + rng.uniform(0, 2 * np.pi))
+              + 0.006 * np.sin(2 * np.pi * 0.3 * t))
+    ph = 2 * np.pi * np.cumsum(freq * wobble) / SR
+    tone = np.sin(ph) + 0.4 * np.sin(2 * ph) + 0.2 * np.sin(3 * ph)
+    env = np.sin(np.linspace(0, np.pi, m)) ** 1.3
+    tone = lowpass(tone, corner=freq * 2.2 + 500)
+    return _norm(tone * env)
+
+
+def _passing_car(rng):
+    """A distant car passing by: filtered noise that swells in and fades out."""
+    m = int(rng.uniform(4.0, 8.0) * SR)
+    noise = colored_noise(m, rng, tilt=1.0, highpass=200, lowpass=3000)
+    env = np.sin(np.linspace(0, np.pi, m)) ** 2
+    return 0.18 * env * noise
+
+
+def _static_burst(rng):
+    m = int(rng.uniform(0.1, 0.4) * SR)
+    env = np.exp(-np.linspace(0, 8, m))
+    return 0.15 * env * colored_noise(m, rng, tilt=0.2, highpass=2000, lowpass=8000)
+
+
+def synth_night_drive(n, rng):
+    """Night Drive: a slow, reverb-drenched chord progression with tape hiss
+    and the occasional distant car. Late-night solitary driving mood."""
+    ratio = _transpose_ratio(rng)
+    chords = [
+        [f * ratio for f in c] for c in (
+            [110.00, 130.81, 164.81], [98.00, 123.47, 146.83],
+            [87.31, 110.00, 130.81], [92.50, 116.54, 138.59],
+        )
+    ]
+    pad = progression_pad(n, rng, chords, chord_sec=10.0, amp=0.14)
+    wet = reverb(pad, rng, decay=3.5, mix=0.4)
+    hiss = _tape_hiss(n, rng, 0.05)
+    cars = sprinkle(n, rng, count=max(2, n // (SR * 40)), make_event=_passing_car)
+    return _norm(lowpass(wet, corner=2200) + hiss + cars, 0.9)
+
+
+def synth_empty_parking_structure(n, rng):
+    """Empty Parking Structure: a sparse, minimal chord drowned in huge
+    concrete reverb, with the occasional water drip. Liminal stillness."""
+    ratio = _transpose_ratio(rng)
+    pad = pad_layer(n, rng, roots=[73.42 * ratio, 110.00 * ratio], amp=0.07)
+    wet = reverb(pad, rng, decay=6.0, mix=0.65)
+    hiss = _tape_hiss(n, rng, 0.04)
+    drip = sprinkle(n, rng, count=max(3, n // (SR * 15)), make_event=_droplet)
+    return _norm(wet + hiss + 0.5 * drip, 0.85)
+
+
+def synth_forgotten_mall(n, rng):
+    """Forgotten Mall: a nostalgic synth melody heard as if through walls --
+    everything heavily muffled and lowpassed."""
+    ratio = _transpose_ratio(rng)
+    scale = ratio * np.array([220.0, 246.94, 261.63, 293.66, 329.63])
+    melody = _sparse_melody(n, rng, scale, gap=(2.5, 5.0), dur=(2.0, 3.5),
+                             amp=0.22, maker=_tape_pad_note)
+    pad = pad_layer(n, rng, roots=[110.00 * ratio, 146.83 * ratio], amp=0.08)
+    muffled = lowpass(melody + pad, corner=1400)
+    hiss = _tape_hiss(n, rng, 0.05)
+    return _norm(muffled + hiss, 0.9)
+
+
+def synth_static_transmission(n, rng):
+    """Static Transmission: mostly tape hiss and lost-signal static bursts,
+    with distant warped tones drifting through."""
+    ratio = _transpose_ratio(rng)
+    hiss = _tape_hiss(n, rng, 0.12)
+    scale = ratio * np.array([164.81, 196.00, 220.00])
+    tones = _sparse_melody(n, rng, scale, gap=(5.0, 9.0), dur=(3.0, 5.0),
+                            amp=0.15, maker=_tape_pad_note)
+    bursts = sprinkle(n, rng, count=max(4, n // (SR * 12)), make_event=_static_burst)
+    return _norm(hiss + lowpass(tones, corner=1800) + bursts, 0.85)
+
+
+def synth_rain_interstate(n, rng):
+    """Rain on the Interstate: rain over a lowpassed pad with distant
+    passing traffic. Highway solitude."""
+    ratio = _transpose_ratio(rng)
+    rain = colored_noise(n, rng, tilt=0.9, highpass=500, lowpass=4000) * 0.3
+    rain = rain * slow_env(n, rng, rate_hz=0.12, depth=0.2)
+    pad = pad_layer(n, rng, roots=[98.00 * ratio, 146.83 * ratio], amp=0.09)
+    cars = sprinkle(n, rng, count=max(2, n // (SR * 35)), make_event=_passing_car)
+    return _norm(rain + lowpass(pad, corner=1800) + cars, 0.9)
+
+
+def synth_suburban_hush(n, rng):
+    """Suburban Hush: a soft pad and tape hiss over a quiet ambient floor --
+    the stillness of a sleeping suburban street at night."""
+    ratio = _transpose_ratio(rng)
+    pad = pad_layer(n, rng, roots=[110.00 * ratio, 164.81 * ratio, 196.00 * ratio], amp=0.08)
+    hiss = _tape_hiss(n, rng, 0.04)
+    amb = colored_noise(n, rng, tilt=2.0, lowpass=500) * 0.06
+    return _norm(lowpass(pad, corner=2000) + hiss + amb, 0.88)
+
+
+def synth_vhs_afterglow(n, rng):
+    """VHS Afterglow: a warm, nostalgic chord progression with a wobbly,
+    lowpassed melody -- the glow of an old recorded tape."""
+    ratio = _transpose_ratio(rng)
+    chords = [
+        [f * ratio for f in c] for c in (
+            [130.81, 164.81, 196.00], [146.83, 185.00, 220.00],
+            [164.81, 207.65, 246.94],
+        )
+    ]
+    pad = progression_pad(n, rng, chords, chord_sec=7.0, amp=0.15)
+    scale = ratio * np.array([261.63, 293.66, 329.63, 392.00])
+    melody = _sparse_melody(n, rng, scale, gap=(2.0, 4.0), dur=(1.5, 2.8),
+                             amp=0.2, maker=_tape_pad_note)
+    hiss = _tape_hiss(n, rng, 0.05)
+    return _norm(lowpass(pad, corner=2200) + melody + hiss, 0.9)
+
+
+def synth_neon_corridor(n, rng):
+    """Neon Corridor: a wobbly retro arpeggio drenched in hallway reverb --
+    walking an empty, glowing liminal corridor."""
+    ratio = _transpose_ratio(rng)
+    scale = ratio * np.array([220.0, 261.63, 293.66, 329.63, 392.00])
+    idx = len(scale) // 2
+    out = np.zeros(n)
+    pos = 0
+    while pos < n:
+        idx = int(np.clip(idx + rng.choice([-1, 1], p=[0.5, 0.5]), 0, len(scale) - 1))
+        dur = rng.uniform(0.5, 0.9)
+        ev = _tape_pad_note(scale[idx], dur, rng)
+        end = min(n - pos, len(ev))
+        out[pos:pos + end] += 0.2 * ev[:end]
+        pos += int(dur * SR)
+    wet = reverb(out, rng, decay=2.5, mix=0.45)
+    hiss = _tape_hiss(n, rng, 0.04)
+    return _norm(lowpass(wet, corner=2000) + hiss, 0.9)
+
+
+def synth_last_broadcast(n, rng):
+    """Last Broadcast: sparse, slightly dissonant detuned tones under
+    frequent static bursts and heavy hiss -- an eerie, fading signal."""
+    ratio = _transpose_ratio(rng)
+    scale = ratio * np.array([174.61, 185.00, 207.65])
+    tones = _sparse_melody(n, rng, scale, gap=(4.0, 8.0), dur=(3.5, 6.0),
+                            amp=0.18, maker=_tape_pad_note)
+    bursts = sprinkle(n, rng, count=max(5, n // (SR * 10)), make_event=_static_burst)
+    hiss = _tape_hiss(n, rng, 0.09)
+    return _norm(lowpass(tones, corner=1600) + bursts + hiss, 0.85)
+
+
+def synth_overpass_3am(n, rng):
+    """Overpass at 3AM: deep distant-traffic rumble under a sparse, muffled
+    melody and tape hiss -- standing alone beneath the highway at night."""
+    ratio = _transpose_ratio(rng)
+    rumble = colored_noise(n, rng, tilt=2.2, lowpass=150) * 0.25
+    scale = ratio * np.array([98.00, 116.54, 130.81])
+    melody = _sparse_melody(n, rng, scale, gap=(5.0, 9.0), dur=(3.0, 5.0),
+                             amp=0.18, maker=_tape_pad_note)
+    hiss = _tape_hiss(n, rng, 0.05)
+    cars = sprinkle(n, rng, count=max(2, n // (SR * 30)), make_event=_passing_car)
+    return _norm(rumble + lowpass(melody, corner=1600) + hiss + cars, 0.88)
+
+
 SYNTHS = {
     "rain": synth_rain,
     "rain_drops": synth_rain_drops,
@@ -1134,6 +1309,17 @@ SYNTHS = {
     "moonlit_manuscript": synth_moonlit_manuscript,
     "hearthside_tales": synth_hearthside_tales,
     "ink_parchment": synth_ink_parchment,
+    # "The Static Horizon" tape-degraded hauntology/liminal-space themes
+    "night_drive": synth_night_drive,
+    "empty_parking_structure": synth_empty_parking_structure,
+    "forgotten_mall": synth_forgotten_mall,
+    "static_transmission": synth_static_transmission,
+    "rain_interstate": synth_rain_interstate,
+    "suburban_hush": synth_suburban_hush,
+    "vhs_afterglow": synth_vhs_afterglow,
+    "neon_corridor": synth_neon_corridor,
+    "last_broadcast": synth_last_broadcast,
+    "overpass_3am": synth_overpass_3am,
 }
 
 
