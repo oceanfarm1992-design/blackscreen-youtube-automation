@@ -901,6 +901,185 @@ def synth_signal_lost(n, rng):
     return _norm(static + blips + sub, 0.85)
 
 
+# --------------------------------------------------------------------------- #
+# "Hearth & Quill" theme synths (co-working/co-studying ambient in warm
+# historical, fantasy, and literary settings) -- felt piano + cello melodies
+# over environmental textures, built from the toolkit above.
+# --------------------------------------------------------------------------- #
+def _felt_piano(freq, dur, rng):
+    """Soft, muted piano-like pluck: quick attack, moderate decay, lowpassed
+    for a 'felt' muted timbre rather than a bright concert piano."""
+    m = int(dur * SR)
+    t = _t(m)
+    out = np.zeros(m)
+    for h, amp in ((1, 1.0), (2, 0.5), (3, 0.25), (4, 0.12), (5, 0.06)):
+        decay = np.exp(-t * (1.2 + 0.3 * h) / dur)
+        out += amp * decay * np.sin(2 * np.pi * freq * h * t + rng.uniform(0, 2 * np.pi))
+    attack = np.minimum(1.0, t * 250.0)
+    out = lowpass(out, corner=freq * 3 + 600)
+    return _norm(out) * attack
+
+
+def _cello_note(freq, dur, rng):
+    """Warm bowed cello-like tone: slow bow attack, sustained body with
+    harmonics, gentle vibrato, and a touch of bow noise."""
+    m = int(dur * SR)
+    t = _t(m)
+    vib = 1 + 0.006 * np.sin(2 * np.pi * 5.0 * t)
+    ph = 2 * np.pi * np.cumsum(freq * vib) / SR
+    tone = np.sin(ph) + 0.35 * np.sin(2 * ph) + 0.15 * np.sin(3 * ph) + 0.08 * np.sin(4 * ph)
+    bow_attack = 1 - np.exp(-t * 6.0)
+    env = bow_attack * np.exp(-t * 0.3 / dur)
+    bow_noise = 0.015 * colored_noise(m, rng, tilt=0.8, highpass=1500, lowpass=5000)
+    return _norm(tone * env) * 0.8 + bow_noise
+
+
+def _page_turn(rng):
+    m = int(rng.uniform(0.15, 0.35) * SR)
+    env = np.sin(np.linspace(0, np.pi, m)) ** 1.5
+    noise = colored_noise(m, rng, tilt=0.5, highpass=1000, lowpass=6000)
+    return 0.08 * env * noise
+
+
+def _pen_scratch(rng):
+    m = int(rng.uniform(0.05, 0.12) * SR)
+    env = np.exp(-np.linspace(0, 18, m))
+    noise = colored_noise(m, rng, tilt=0.3, highpass=2000, lowpass=7000)
+    return 0.06 * env * noise
+
+
+def synth_candlelit_study(n, rng):
+    """Candlelit Study: a warm felt-piano melody over a major-7th pad, with
+    a quiet crackling fire underneath. Core co-working atmosphere."""
+    ratio = _transpose_ratio(rng)
+    chords = [
+        [f * ratio for f in c] for c in (
+            [174.61, 220.00, 261.63, 329.63],  # Fmaj7
+            [146.83, 174.61, 220.00, 261.63],  # Dm7
+            [196.00, 246.94, 293.66, 349.23],  # G7
+            [130.81, 164.81, 196.00, 246.94],  # Cmaj7-ish
+        )
+    ]
+    pad = progression_pad(n, rng, chords, chord_sec=9.0, amp=0.14)
+    scale = ratio * np.array([261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 523.25])
+    melody = _sparse_melody(n, rng, scale, gap=(1.6, 3.6), dur=(1.2, 2.4),
+                             amp=0.26, maker=_felt_piano)
+    crackle = lowpass(_crackle(n, rng, rate=5), corner=4500) * 0.3
+    return _norm(lowpass(pad, corner=3000) + melody + crackle, 0.9)
+
+
+def synth_leaded_glass_rain(n, rng):
+    """Leaded Glass Rain: soft rain against an old windowpane, with sparse
+    warm cello notes drifting through."""
+    ratio = _transpose_ratio(rng)
+    rain = colored_noise(n, rng, tilt=0.9, highpass=600, lowpass=4500) * 0.35
+    rain = rain * slow_env(n, rng, rate_hz=0.1, depth=0.2)
+    scale = ratio * np.array([98.00, 116.54, 130.81, 164.81, 196.00])
+    cello = _sparse_melody(n, rng, scale, gap=(3.0, 6.0), dur=(3.0, 5.0),
+                            amp=0.22, maker=_cello_note)
+    return _norm(rain + lowpass(cello, corner=3500), 0.9)
+
+
+def synth_quiet_scriptorium(n, rng):
+    """Quiet Scriptorium: a soft pad, sparse felt-piano phrases, and the
+    occasional page turn. Contemplative writing ambience."""
+    ratio = _transpose_ratio(rng)
+    pad = pad_layer(n, rng, roots=[130.81 * ratio, 164.81 * ratio, 196.00 * ratio], amp=0.08)
+    scale = ratio * np.array([261.63, 293.66, 311.13, 349.23, 392.00])
+    piano = _sparse_melody(n, rng, scale, gap=(2.2, 4.5), dur=(1.0, 2.0),
+                            amp=0.24, maker=_felt_piano)
+    pages = sprinkle(n, rng, count=max(2, n // (SR * 25)), make_event=_page_turn)
+    return _norm(lowpass(pad, corner=2200) + piano + pages, 0.9)
+
+
+def synth_tavern_hearth(n, rng):
+    """Tavern Hearth: a crackling fireplace under a warm, folk-leaning
+    piano motif. Cozy communal co-working mood."""
+    ratio = _transpose_ratio(rng)
+    crackle = lowpass(_crackle(n, rng, rate=12), corner=5000) * 0.55
+    rumble = colored_noise(n, rng, tilt=2.0, lowpass=220) * 0.18
+    scale = ratio * np.array([196.00, 220.00, 246.94, 293.66, 329.63, 392.00])
+    piano = _sparse_melody(n, rng, scale, gap=(1.0, 2.4), dur=(0.7, 1.6),
+                            amp=0.24, maker=_felt_piano)
+    return _norm(crackle + rumble + piano, 0.9)
+
+
+def synth_lantern_ink(n, rng):
+    """Lantern & Ink: a very sparse, intimate felt-piano line over a quiet
+    pad -- the stillness of writing by lantern light."""
+    ratio = _transpose_ratio(rng)
+    pad = pad_layer(n, rng, roots=[110.00 * ratio, 164.81 * ratio], amp=0.06)
+    scale = ratio * np.array([220.00, 261.63, 293.66, 349.23])
+    piano = _sparse_melody(n, rng, scale, gap=(3.5, 7.0), dur=(1.5, 3.0),
+                            amp=0.22, maker=_felt_piano)
+    return _norm(reverb(lowpass(pad, corner=1800) + piano, rng, decay=2.5, mix=0.3), 0.9)
+
+
+def synth_old_library_hush(n, rng):
+    """Old Library Hush: a dusty, soft pad with distant page turns and a
+    sparse felt-piano line -- the hush of tall shelves and old paper."""
+    ratio = _transpose_ratio(rng)
+    pad = pad_layer(n, rng, roots=[98.00 * ratio, 146.83 * ratio, 196.00 * ratio], amp=0.09)
+    scale = ratio * np.array([293.66, 329.63, 392.00, 440.00])
+    piano = _sparse_melody(n, rng, scale, gap=(3.0, 5.5), dur=(1.2, 2.2),
+                            amp=0.2, maker=_felt_piano)
+    pages = sprinkle(n, rng, count=max(2, n // (SR * 30)), make_event=_page_turn)
+    dust = colored_noise(n, rng, tilt=2.2, lowpass=400) * 0.05
+    return _norm(lowpass(pad, corner=2000) + piano + pages + dust, 0.9)
+
+
+def synth_winter_study(n, rng):
+    """Winter Study: a crackling fire and a slow cello drone under rare
+    felt-piano phrases. Cozy warmth against the cold outside."""
+    ratio = _transpose_ratio(rng)
+    crackle = lowpass(_crackle(n, rng, rate=7), corner=4500) * 0.35
+    scale = ratio * np.array([87.31, 130.81, 164.81])
+    cello = _sparse_melody(n, rng, scale, gap=(4.0, 7.0), dur=(4.0, 6.0),
+                            amp=0.2, maker=_cello_note)
+    piano_scale = ratio * np.array([261.63, 311.13, 349.23])
+    piano = _sparse_melody(n, rng, piano_scale, gap=(5.0, 9.0), dur=(1.2, 2.0),
+                            amp=0.18, maker=_felt_piano)
+    return _norm(crackle + lowpass(cello, corner=2500) + piano, 0.9)
+
+
+def synth_moonlit_manuscript(n, rng):
+    """Moonlit Manuscript: a gentle string-like pad under a sparse,
+    reflective felt-piano line. A quiet night of writing."""
+    ratio = _transpose_ratio(rng)
+    pad = pad_layer(n, rng, roots=[146.83 * ratio, 220.00 * ratio, 293.66 * ratio],
+                     detune=0.005, amp=0.1)
+    scale = ratio * np.array([293.66, 349.23, 392.00, 440.00, 523.25])
+    piano = _sparse_melody(n, rng, scale, gap=(2.0, 4.0), dur=(1.0, 2.2),
+                            amp=0.24, maker=_felt_piano)
+    return _norm(reverb(lowpass(pad, corner=2400) + piano, rng, decay=3.0, mix=0.35), 0.9)
+
+
+def synth_hearthside_tales(n, rng):
+    """Hearthside Tales: a warm cello melody and crackling fire -- the mood
+    of a story told by firelight."""
+    ratio = _transpose_ratio(rng)
+    crackle = lowpass(_crackle(n, rng, rate=9), corner=4500) * 0.4
+    scale = ratio * np.array([130.81, 146.83, 164.81, 196.00, 220.00])
+    cello = _sparse_melody(n, rng, scale, gap=(2.0, 4.0), dur=(2.0, 3.5),
+                            amp=0.26, maker=_cello_note)
+    piano_scale = ratio * np.array([392.00, 440.00, 493.88])
+    piano = _sparse_melody(n, rng, piano_scale, gap=(4.5, 8.0), dur=(0.9, 1.6),
+                            amp=0.15, maker=_felt_piano)
+    return _norm(crackle + lowpass(cello, corner=2800) + piano, 0.9)
+
+
+def synth_ink_parchment(n, rng):
+    """Ink & Parchment: minimal scratchy pen-on-paper texture with a very
+    sparse felt-piano line. The quietest, most minimal writing ambience."""
+    ratio = _transpose_ratio(rng)
+    scratch = sprinkle(n, rng, count=max(8, n // (SR // 2)), make_event=_pen_scratch)
+    scale = ratio * np.array([220.00, 261.63, 329.63])
+    piano = _sparse_melody(n, rng, scale, gap=(5.0, 9.0), dur=(1.5, 2.5),
+                            amp=0.2, maker=_felt_piano)
+    pad = pad_layer(n, rng, roots=[73.42 * ratio], amp=0.04)
+    return _norm(scratch + piano + lowpass(pad, corner=1200), 0.9)
+
+
 SYNTHS = {
     "rain": synth_rain,
     "rain_drops": synth_rain_drops,
@@ -944,6 +1123,17 @@ SYNTHS = {
     "starlight_convergence": synth_starlight_convergence,
     "zero_g_drift": synth_zero_g_drift,
     "signal_lost": synth_signal_lost,
+    # "Hearth & Quill" warm co-working/literary ambient themes
+    "candlelit_study": synth_candlelit_study,
+    "leaded_glass_rain": synth_leaded_glass_rain,
+    "quiet_scriptorium": synth_quiet_scriptorium,
+    "tavern_hearth": synth_tavern_hearth,
+    "lantern_ink": synth_lantern_ink,
+    "old_library_hush": synth_old_library_hush,
+    "winter_study": synth_winter_study,
+    "moonlit_manuscript": synth_moonlit_manuscript,
+    "hearthside_tales": synth_hearthside_tales,
+    "ink_parchment": synth_ink_parchment,
 }
 
 
