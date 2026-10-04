@@ -1255,6 +1255,197 @@ def synth_overpass_3am(n, rng):
     return _norm(rumble + lowpass(melody, corner=1600) + hiss + cars, 0.88)
 
 
+# --------------------------------------------------------------------------- #
+# "Aether Resonance" theme synths (functional wellness/sleep/meditation --
+# pure frequencies, sound baths, generative drones). Most of this channel's
+# themes lean on the EXISTING wellness-frequency layer (tone_drone/
+# binaural/isochronic/singing_bowl, SOLFEGGIO/BRAINWAVE tables) via
+# synth="none" + theme["tone"]/["beat"]/["bowl"] -- these two are the only
+# new synth beds needed, for themes that want a generative drone/noise
+# foundation under (or instead of) a pure tone.
+# --------------------------------------------------------------------------- #
+def synth_resonance_drone(n, rng):
+    """A slow, generative layered sub/low drone -- foundation bed for
+    frequency-layer themes that want more body than a bare tone."""
+    ratio = _transpose_ratio(rng)
+    drone = np.zeros(n)
+    for f in (55.0 * ratio, 82.41 * ratio, 110.00 * ratio):
+        drone += sine(f, n, rng.uniform(0, 2 * np.pi))
+    drone = lowpass(drone, corner=600)
+    breath = slow_env(n, rng, rate_hz=0.03, depth=0.3)
+    return _norm(drone * breath, 0.85)
+
+
+def synth_pink_veil(n, rng):
+    """Organic, continuous pink-noise wash -- a soft generative bed with a
+    very slow breathing swell."""
+    pink = colored_noise(n, rng, tilt=1.3, lowpass=6000) * 0.7
+    breath = slow_env(n, rng, rate_hz=0.05, depth=0.2)
+    return _norm(pink * breath, 0.8)
+
+
+# --------------------------------------------------------------------------- #
+# "Moss & Manor" theme synths (micro-environmental natural ambient --
+# acoustic guitar fingerpicking and bowed bass over pristine nature
+# recordings: thunder, creeks, wind through trees). Reuses the existing
+# _thunder_event, _droplet, and _bird_event nature textures, plus two new
+# acoustic-instrument building blocks.
+# --------------------------------------------------------------------------- #
+def _guitar_pluck(freq, dur, rng):
+    """Acoustic fingerpicked guitar-like note: bright pluck, natural
+    harmonic decay, a touch of pick noise."""
+    m = int(dur * SR)
+    t = _t(m)
+    out = np.zeros(m)
+    for h, amp in ((1, 1.0), (2, 0.55), (3, 0.3), (4, 0.18), (5, 0.1), (6, 0.05)):
+        decay = np.exp(-t * (1.0 + 0.4 * h) / dur)
+        out += amp * decay * np.sin(2 * np.pi * freq * h * t + rng.uniform(0, 2 * np.pi))
+    attack = np.minimum(1.0, t * 500.0)
+    pick_noise = (0.03 * colored_noise(m, rng, tilt=0.5, highpass=2000, lowpass=7000)
+                  * np.exp(-np.linspace(0, 40, m)))
+    return _norm(out) * attack + pick_noise
+
+
+def _upright_bass_note(freq, dur, rng):
+    """Deep bowed upright-bass-like tone: slow bow attack, warm sustain."""
+    m = int(dur * SR)
+    t = _t(m)
+    vib = 1 + 0.004 * np.sin(2 * np.pi * 3.5 * t)
+    ph = 2 * np.pi * np.cumsum(freq * vib) / SR
+    tone = np.sin(ph) + 0.3 * np.sin(2 * ph) + 0.1 * np.sin(3 * ph)
+    bow_attack = 1 - np.exp(-t * 4.0)
+    env = bow_attack * np.exp(-t * 0.25 / dur)
+    return _norm(tone * env) * 0.85
+
+
+def synth_greenhouse_ruins(n, rng):
+    """Greenhouse Ruins: fingerpicked guitar over distant thunder and
+    dripping water -- an overgrown, half-forgotten glasshouse."""
+    ratio = _transpose_ratio(rng)
+    scale = ratio * np.array([196.00, 220.00, 246.94, 293.66, 329.63])
+    guitar = _sparse_melody(n, rng, scale, gap=(1.8, 3.5), dur=(1.2, 2.0),
+                             amp=0.22, maker=_guitar_pluck)
+    thunder = sprinkle(n, rng, count=max(1, n // (SR * 60)), make_event=_thunder_event)
+    drips = sprinkle(n, rng, count=max(3, n // (SR * 10)), make_event=_droplet)
+    wind = colored_noise(n, rng, tilt=1.4, lowpass=1000) * 0.08
+    return _norm(guitar + 0.4 * thunder + 0.5 * drips + wind, 0.9)
+
+
+def synth_rainy_cottage_garden(n, rng):
+    """Rainy Cottage Garden: soft rain with gentle guitar and sparse bowed
+    bass -- a quiet garden in the rain."""
+    ratio = _transpose_ratio(rng)
+    rain = colored_noise(n, rng, tilt=0.9, highpass=500, lowpass=4500) * 0.3
+    rain = rain * slow_env(n, rng, rate_hz=0.1, depth=0.2)
+    scale = ratio * np.array([164.81, 196.00, 220.00, 246.94])
+    guitar = _sparse_melody(n, rng, scale, gap=(2.5, 4.5), dur=(1.5, 2.5),
+                             amp=0.2, maker=_guitar_pluck)
+    bass_scale = ratio * np.array([82.41, 98.00])
+    bass = _sparse_melody(n, rng, bass_scale, gap=(6.0, 10.0), dur=(3.0, 5.0),
+                           amp=0.15, maker=_upright_bass_note)
+    return _norm(rain + guitar + bass, 0.9)
+
+
+def synth_misty_forest_floor(n, rng):
+    """Misty Forest Floor: soft wind through ancient trees under sparse
+    guitar and a low bowed-bass drone."""
+    ratio = _transpose_ratio(rng)
+    wind = colored_noise(n, rng, tilt=1.4, lowpass=1200) * slow_env(n, rng, rate_hz=0.05, depth=0.4)
+    scale = ratio * np.array([146.83, 174.61, 196.00])
+    guitar = _sparse_melody(n, rng, scale, gap=(4.0, 7.0), dur=(1.8, 2.8),
+                             amp=0.18, maker=_guitar_pluck)
+    bass = _sparse_melody(n, rng, ratio * np.array([73.42]), gap=(8.0, 12.0),
+                           dur=(4.0, 6.0), amp=0.14, maker=_upright_bass_note)
+    return _norm(0.5 * wind + guitar + bass, 0.9)
+
+
+def synth_creek_hollow(n, rng):
+    """Creek Hollow: flowing stream water and small bubbles under bright
+    fingerpicked guitar."""
+    ratio = _transpose_ratio(rng)
+    water = colored_noise(n, rng, tilt=1.0, highpass=400, lowpass=6000) * 0.5
+    water = water * slow_env(n, rng, rate_hz=0.25, depth=0.12)
+    bubbles = sprinkle(n, rng, count=max(8, n // (SR * 2)), make_event=_droplet)
+    scale = ratio * np.array([220.00, 246.94, 277.18, 329.63])
+    guitar = _sparse_melody(n, rng, scale, gap=(2.0, 3.8), dur=(1.0, 1.8),
+                             amp=0.2, maker=_guitar_pluck)
+    return _norm(0.6 * water + 0.3 * bubbles + guitar, 0.9)
+
+
+def synth_ancient_grove(n, rng):
+    """Ancient Grove: deep wind and a slow bowed-bass melody under rare
+    guitar accents -- standing among very old trees."""
+    ratio = _transpose_ratio(rng)
+    wind = colored_noise(n, rng, tilt=1.5, lowpass=900) * slow_env(n, rng, rate_hz=0.04, depth=0.45)
+    bass = _sparse_melody(n, rng, ratio * np.array([55.00, 65.41, 73.42]),
+                           gap=(5.0, 8.0), dur=(4.0, 6.0), amp=0.2, maker=_upright_bass_note)
+    guitar = _sparse_melody(n, rng, ratio * np.array([220.00, 261.63]),
+                             gap=(7.0, 11.0), dur=(1.5, 2.2), amp=0.14, maker=_guitar_pluck)
+    return _norm(0.5 * wind + bass + guitar, 0.9)
+
+
+def synth_thunder_garden(n, rng):
+    """Thunder Garden: rain and distant rolling thunder under a gentle
+    guitar line."""
+    ratio = _transpose_ratio(rng)
+    rain = colored_noise(n, rng, tilt=0.85, highpass=400, lowpass=5000) * 0.32
+    thunder = sprinkle(n, rng, count=max(2, n // (SR * 45)), make_event=_thunder_event)
+    scale = ratio * np.array([196.00, 233.08, 261.63])
+    guitar = _sparse_melody(n, rng, scale, gap=(3.0, 5.5), dur=(1.5, 2.5),
+                             amp=0.18, maker=_guitar_pluck)
+    return _norm(rain + 0.6 * thunder + guitar, 0.9)
+
+
+def synth_mossy_stonework(n, rng):
+    """Mossy Stonework: minimal dripping water in long reverb under a very
+    sparse guitar line -- quiet, overgrown ruins."""
+    ratio = _transpose_ratio(rng)
+    drips = sprinkle(n, rng, count=max(4, n // (SR * 8)), make_event=_droplet)
+    wet = reverb(drips, rng, decay=3.0, mix=0.4)
+    scale = ratio * np.array([174.61, 207.65, 233.08])
+    guitar = _sparse_melody(n, rng, scale, gap=(5.0, 9.0), dur=(1.5, 2.5),
+                             amp=0.16, maker=_guitar_pluck)
+    amb = colored_noise(n, rng, tilt=2.0, lowpass=500) * 0.06
+    return _norm(wet + guitar + amb, 0.88)
+
+
+def synth_wildflower_meadow(n, rng):
+    """Wildflower Meadow: light wind and birdsong under a cheerful,
+    brighter guitar line."""
+    ratio = _transpose_ratio(rng)
+    wind = colored_noise(n, rng, tilt=1.3, lowpass=1500) * 0.12
+    birds = sprinkle(n, rng, count=max(3, n // (SR * 15)), make_event=_bird_event)
+    scale = ratio * np.array([261.63, 293.66, 329.63, 392.00])
+    guitar = _sparse_melody(n, rng, scale, gap=(2.2, 4.0), dur=(1.0, 1.8),
+                             amp=0.2, maker=_guitar_pluck)
+    return _norm(wind + birds + guitar, 0.9)
+
+
+def synth_fernwood_path(n, rng):
+    """Fernwood Path: a gentle creek underfoot with a walking-pace guitar
+    line and sparse bowed bass."""
+    ratio = _transpose_ratio(rng)
+    water = colored_noise(n, rng, tilt=1.1, highpass=500, lowpass=5000) * 0.35
+    scale = ratio * np.array([196.00, 220.00, 246.94, 293.66])
+    guitar = _sparse_melody(n, rng, scale, gap=(1.8, 3.2), dur=(1.0, 1.8),
+                             amp=0.22, maker=_guitar_pluck)
+    bass = _sparse_melody(n, rng, ratio * np.array([98.00]), gap=(6.0, 9.0),
+                           dur=(3.0, 4.5), amp=0.15, maker=_upright_bass_note)
+    return _norm(water + guitar + bass, 0.9)
+
+
+def synth_twilight_greenhouse(n, rng):
+    """Twilight Greenhouse: soft wind and far-off thunder under a sparse,
+    reflective guitar line as dusk settles."""
+    ratio = _transpose_ratio(rng)
+    wind = colored_noise(n, rng, tilt=1.5, lowpass=800) * slow_env(n, rng, rate_hz=0.03, depth=0.4)
+    thunder = sprinkle(n, rng, count=max(1, n // (SR * 70)), make_event=_thunder_event)
+    scale = ratio * np.array([174.61, 196.00, 220.00])
+    guitar = _sparse_melody(n, rng, scale, gap=(5.0, 8.5), dur=(1.8, 2.8),
+                             amp=0.16, maker=_guitar_pluck)
+    return _norm(0.5 * wind + 0.5 * thunder + guitar, 0.88)
+
+
 SYNTHS = {
     "rain": synth_rain,
     "rain_drops": synth_rain_drops,
@@ -1320,6 +1511,20 @@ SYNTHS = {
     "neon_corridor": synth_neon_corridor,
     "last_broadcast": synth_last_broadcast,
     "overpass_3am": synth_overpass_3am,
+    # "Aether Resonance" wellness/frequency generative drone beds
+    "resonance_drone": synth_resonance_drone,
+    "pink_veil": synth_pink_veil,
+    # "Moss & Manor" acoustic guitar/bowed bass + nature field-recording themes
+    "greenhouse_ruins": synth_greenhouse_ruins,
+    "rainy_cottage_garden": synth_rainy_cottage_garden,
+    "misty_forest_floor": synth_misty_forest_floor,
+    "creek_hollow": synth_creek_hollow,
+    "ancient_grove": synth_ancient_grove,
+    "thunder_garden": synth_thunder_garden,
+    "mossy_stonework": synth_mossy_stonework,
+    "wildflower_meadow": synth_wildflower_meadow,
+    "fernwood_path": synth_fernwood_path,
+    "twilight_greenhouse": synth_twilight_greenhouse,
 }
 
 
