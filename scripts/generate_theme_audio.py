@@ -736,6 +736,171 @@ def synth_obsidian_tower(n, rng):
     return _norm(organ + crackle, 0.9)
 
 
+# --------------------------------------------------------------------------- #
+# "Sanctuary of Sci" theme synths (deep space / sleeper ship / cosmic
+# observatory ambient for focus, coding, and late-night study) -- built from
+# the same genre-agnostic toolkit above.
+# --------------------------------------------------------------------------- #
+def synth_sleeper_drift(n, rng):
+    """Sleeper Drift: deep idling sleeper-ship engine drone with a slow
+    mechanical pulse. Cosmic isolation for background focus."""
+    ratio = _transpose_ratio(rng)
+    drone = np.zeros(n)
+    for f in (27.5 * ratio, 41.2 * ratio, 55.0 * ratio):
+        drone += sine(f, n, rng.uniform(0, 2 * np.pi))
+    drone = lowpass(drone, corner=160)
+    pulse = 0.85 + 0.15 * np.sin(2 * np.pi * 0.12 * _t(n))
+    breath = slow_env(n, rng, rate_hz=0.04, depth=0.25)
+    hum = colored_noise(n, rng, tilt=2.2, lowpass=100) * 0.08
+    return _norm(drone * pulse * breath + hum, 0.9)
+
+
+def synth_nebula_watch(n, rng):
+    """Nebula Watch: wide cosmic pad slowly shifting between bright and dark
+    tone. Gazing at a distant nebula from the observation deck."""
+    ratio = _transpose_ratio(rng)
+    pad = pad_layer(n, rng, roots=[65.41 * ratio, 98.00 * ratio, 130.81 * ratio,
+                                    196.00 * ratio], detune=0.006, amp=0.15)
+    mod = 1 + 0.12 * np.sin(2 * np.pi * 0.025 * _t(n))
+    bright = lowpass(pad, corner=2400)
+    dark = lowpass(pad, corner=700)
+    mixw = 0.5 + 0.5 * np.sin(2 * np.pi * 0.015 * _t(n))
+    return _norm((dark * (1 - mixw) + bright * mixw) * mod, 0.9)
+
+
+def synth_station_hum(n, rng):
+    """Station Hum: mechanical ventilation/engine hum with a steady
+    reassuring throb. Grounding background texture."""
+    ratio = _transpose_ratio(rng)
+    base = 55.0 * ratio
+    hum = np.zeros(n)
+    for k, amp in ((1.0, 1.0), (2.0, 0.4), (3.0, 0.18), (4.0, 0.08)):
+        hum += amp * sine(base * k, n, rng.uniform(0, 2 * np.pi))
+    hum = lowpass(hum, corner=900)
+    pulse = 0.8 + 0.2 * np.sin(2 * np.pi * 0.22 * _t(n))
+    whir = colored_noise(n, rng, tilt=1.4, highpass=400, lowpass=2500) * 0.06
+    return _norm(hum * pulse + whir, 0.9)
+
+
+def _ice_shimmer(rng):
+    m = int(rng.uniform(0.2, 0.5) * SR)
+    f = rng.uniform(1200, 2400)
+    env = np.sin(np.linspace(0, np.pi, m)) ** 2
+    return 0.1 * env * np.sin(2 * np.pi * f * _t(m))
+
+
+def synth_cryo_bay(n, rng):
+    """Cryo Bay: cold, sparse high pad drenched in long reverb with the
+    occasional ice-crystal shimmer. Sleeper-pod stillness."""
+    ratio = _transpose_ratio(rng)
+    pad = pad_layer(n, rng, roots=[164.81 * ratio, 220.00 * ratio, 329.63 * ratio],
+                     detune=0.004, amp=0.11)
+    wet = reverb(pad, rng, decay=5.0, mix=0.6)
+    shimmer = sprinkle(n, rng, count=max(5, n // (SR * 4)), make_event=_ice_shimmer)
+    return _norm(wet + shimmer, 0.9)
+
+
+def _radar_ping(freq, rng):
+    m = int(rng.uniform(1.5, 2.5) * SR)
+    t = _t(m)
+    env = np.exp(-t * 2.0)
+    tone = np.sin(2 * np.pi * freq * t) + 0.3 * np.sin(2 * np.pi * freq * 2 * t)
+    return 0.2 * tone * env
+
+
+def synth_observatory_deck(n, rng):
+    """Observatory Deck: a quiet pad under sparse, soft radar-ping accents --
+    distant star data scrolling by. Generative focus texture."""
+    ratio = _transpose_ratio(rng)
+    pad = pad_layer(n, rng, roots=[73.42 * ratio, 110.00 * ratio, 164.81 * ratio], amp=0.12)
+    scale = ratio * np.array([440.0, 523.25, 659.25, 784.0])
+    pings = np.zeros(n)
+    pos = 0
+    while pos < n:
+        ev = _radar_ping(float(rng.choice(scale)), rng)
+        end = min(n, pos + len(ev))
+        pings[pos:end] += ev[:end - pos]
+        pos += int(rng.uniform(3.0, 6.0) * SR)
+    wet = reverb(pings, rng, decay=3.0, mix=0.4)
+    return _norm(lowpass(pad, corner=2000) + wet, 0.9)
+
+
+def synth_ion_trail(n, rng):
+    """Ion Trail: a pulsing sub-bass under a generative random-walk arpeggio
+    -- brighter, more rhythmic focus texture for coding sessions."""
+    ratio = _transpose_ratio(rng)
+    sub = sine(41.2 * ratio, n, rng.uniform(0, 2 * np.pi))
+    pulse = 0.6 + 0.4 * (0.5 + 0.5 * np.sin(2 * np.pi * 0.5 * _t(n))) ** 2
+    sub = lowpass(sub, corner=120) * pulse
+
+    scale = ratio * np.array([220.0, 246.94, 277.18, 329.63, 369.99])
+    idx = len(scale) // 2
+    out = np.zeros(n)
+    pos = 0
+    while pos < n:
+        idx = int(np.clip(idx + rng.choice([-1, 0, 1], p=[0.3, 0.3, 0.4]), 0, len(scale) - 1))
+        f = scale[idx]
+        m = int(rng.uniform(0.35, 0.6) * SR)
+        t = _t(m)
+        env = np.exp(-6.0 * t) * (1 - np.exp(-30 * t))
+        tone = np.sin(2 * np.pi * f * t) + 0.15 * np.sin(2 * np.pi * f * 2 * t)
+        end = min(n - pos, m)
+        out[pos:pos + end] += 0.22 * tone[:end] * env[:end]
+        pos += m
+    arp = reverb(out, rng, decay=1.5, mix=0.25)
+    return _norm(0.5 * sub + arp, 0.9)
+
+
+def synth_long_dark(n, rng):
+    """The Long Dark: minimal, ultra-sparse deep drone. Isolation."""
+    ratio = _transpose_ratio(rng)
+    drone = sine(20.6 * ratio, n, rng.uniform(0, 2 * np.pi))
+    drone += 0.4 * sine(30.9 * ratio, n, rng.uniform(0, 2 * np.pi))
+    drone = lowpass(drone, corner=90)
+    breath = slow_env(n, rng, rate_hz=0.025, depth=0.4)
+    hiss = colored_noise(n, rng, tilt=2.8, lowpass=60) * 0.05
+    return _norm(drone * breath + hiss, 0.85)
+
+
+def synth_starlight_convergence(n, rng):
+    """Starlight Convergence: a warmer, major-leaning cosmic pad. Hopeful
+    cinematic mood for a long focus session."""
+    ratio = _transpose_ratio(rng)
+    pad = pad_layer(n, rng, roots=[98.00 * ratio, 146.83 * ratio, 196.00 * ratio,
+                                    246.94 * ratio], detune=0.005, amp=0.16)
+    mod = 1 + 0.1 * np.sin(2 * np.pi * 0.02 * _t(n))
+    return _norm(lowpass(pad * mod, corner=2600), 0.9)
+
+
+def synth_zero_g_drift(n, rng):
+    """Zero-G Drift: a wide, floaty pad with a very slow bright/dark filter
+    sweep -- weightless, directionless drifting."""
+    ratio = _transpose_ratio(rng)
+    pad = pad_layer(n, rng, roots=[87.31 * ratio, 130.81 * ratio, 174.61 * ratio,
+                                    261.63 * ratio], detune=0.007, amp=0.13)
+    bright = lowpass(pad, corner=2000)
+    dark = lowpass(pad, corner=400)
+    mixw = 0.5 + 0.5 * np.sin(2 * np.pi * 0.012 * _t(n))
+    return _norm(dark * (1 - mixw) + bright * mixw, 0.9)
+
+
+def _distant_blip(rng):
+    m = int(rng.uniform(0.3, 0.8) * SR)
+    f = rng.uniform(300, 900)
+    env = np.exp(-np.linspace(0, 4, m))
+    return 0.12 * env * np.sin(2 * np.pi * f * _t(m))
+
+
+def synth_signal_lost(n, rng):
+    """Signal Lost: faint radio static with sparse distant tone blips.
+    Mysterious, slightly eerie background atmosphere."""
+    static = colored_noise(n, rng, tilt=0.6, highpass=800, lowpass=6000) * 0.15
+    static = static * slow_env(n, rng, rate_hz=0.3, depth=0.5)
+    blips = sprinkle(n, rng, count=max(4, n // (SR * 8)), make_event=_distant_blip)
+    sub = colored_noise(n, rng, tilt=2.4, lowpass=100) * 0.1
+    return _norm(static + blips + sub, 0.85)
+
+
 SYNTHS = {
     "rain": synth_rain,
     "rain_drops": synth_rain_drops,
@@ -768,6 +933,17 @@ SYNTHS = {
     "black_hole": synth_black_hole,
     "monastic_echoes": synth_monastic_echoes,
     "obsidian_tower": synth_obsidian_tower,
+    # "Sanctuary of Sci" deep-space/sleeper-ship/observatory focus themes
+    "sleeper_drift": synth_sleeper_drift,
+    "nebula_watch": synth_nebula_watch,
+    "station_hum": synth_station_hum,
+    "cryo_bay": synth_cryo_bay,
+    "observatory_deck": synth_observatory_deck,
+    "ion_trail": synth_ion_trail,
+    "long_dark": synth_long_dark,
+    "starlight_convergence": synth_starlight_convergence,
+    "zero_g_drift": synth_zero_g_drift,
+    "signal_lost": synth_signal_lost,
 }
 
 

@@ -1,0 +1,117 @@
+name: daily-produce-sanctuary
+
+# Produces "Sanctuary of Sci" videos, ONE per run, spread across the day so
+# runs never overlap. 1 feature (14:30, real procedural animation,
+# 1920x1080) + 1 Short (59s, 1080x1920) per day.
+#
+# The 2 runs fire 12h apart. Each cron maps to a "slot" 0..1 (see
+# sanctuary/produce.py --slot): slot 0 = the feature, slot 1 = the Short.
+# Musics rotate through the whole theme library in a continuous cycle. Runs
+# on a PUBLIC repo so standard-runner minutes are free and unmetered.
+#
+# Scheduled on hours 2 and 14 UTC -- distinct from every other channel's
+# workflow in this repo (Meditated Sleeping: 0/12, Aether & Ash: 5/17) so
+# none of them ever collide.
+#
+# YouTube quota: 10,000 units/day. 1 feature + 1 short/day is comfortably
+# under quota on a single OAuth project.
+#
+# Optional repo Secrets (Settings -> Secrets and variables -> Actions). If
+# present, the day's videos are uploaded to the Sanctuary of Sci channel as
+# PUBLIC. Without them, the assets are produced and saved as run artifacts
+# only. Use the workflow_dispatch "privacy" input to override to
+# private/unlisted for a manual run.
+#   SANCTUARY_YT_CLIENT_ID, SANCTUARY_YT_CLIENT_SECRET, SANCTUARY_YT_REFRESH_TOKEN
+
+on:
+  schedule:
+    - cron: "0 2 * * *"     # slot 0   02:00 UTC  feature
+    - cron: "0 14 * * *"    # slot 1   14:00 UTC  short
+  workflow_dispatch:
+    inputs:
+      privacy:
+        description: "Upload visibility: private | unlisted | public"
+        default: "public"
+      shorts:
+        description: "Test only: number of Shorts (0 = full daily batch)"
+        default: "0"
+      longs:
+        description: "Test only: number of features (0 = full daily batch)"
+        default: "0"
+
+# Least privilege: the auto-injected GITHUB_TOKEN only ever needs to read the
+# repo (checkout). Uploads use the SANCTUARY_YT_* secrets, not this token.
+permissions:
+  contents: read
+
+# One production run at a time so two runs can never render/upload
+# simultaneously. Separate group from every other channel's workflow so
+# they never block each other.
+concurrency:
+  group: daily-produce-sanctuary
+  cancel-in-progress: false
+
+jobs:
+  produce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      SANCTUARY_YT_CLIENT_ID: ${{ secrets.SANCTUARY_YT_CLIENT_ID }}
+      SANCTUARY_YT_CLIENT_SECRET: ${{ secrets.SANCTUARY_YT_CLIENT_SECRET }}
+      SANCTUARY_YT_REFRESH_TOKEN: ${{ secrets.SANCTUARY_YT_REFRESH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Map schedule -> slot
+        id: slot
+        run: |
+          case "${{ github.event.schedule }}" in
+            "0 2 * * *")   echo "slot=0" >> "$GITHUB_OUTPUT" ;;
+            "0 14 * * *")  echo "slot=1" >> "$GITHUB_OUTPUT" ;;
+            *)             echo "slot=" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Produce video(s) + QC
+        run: |
+          SHORTS="${{ github.event.inputs.shorts || 0 }}"
+          LONGS="${{ github.event.inputs.longs || 0 }}"
+          SLOT="${{ steps.slot.outputs.slot }}"
+          if [ "$SHORTS" != "0" ] || [ "$LONGS" != "0" ]; then
+            echo "Manual test batch: $LONGS feature(s) + $SHORTS short(s)"
+            python sanctuary/produce.py --shorts "$SHORTS" --longs "$LONGS" --out-dir out
+          elif [ -n "$SLOT" ]; then
+            echo "Scheduled slot $SLOT"
+            python sanctuary/produce.py --slot "$SLOT" --out-dir out
+          else
+            echo "Manual full daily batch"
+            python sanctuary/produce.py --daily --out-dir out
+          fi
+
+      - name: Show queue manifests
+        run: |
+          for m in out/*_manifest.json; do echo "--- $m ---"; cat "$m"; echo; done
+
+      - name: Upload to YouTube as PUBLIC (only if secrets are set)
+        if: ${{ env.SANCTUARY_YT_REFRESH_TOKEN != '' }}
+        run: |
+          python sanctuary/publish_queue.py --out-dir out --privacy "${{ github.event.inputs.privacy || 'public' }}"
+
+      - name: Upload metadata + manifests as artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: metadata-sanctuary-${{ github.run_id }}
+          path: |
+            out/*_manifest.json
+            out/*_meta.json
+          retention-days: 14
