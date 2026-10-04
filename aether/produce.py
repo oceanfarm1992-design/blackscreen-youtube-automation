@@ -4,7 +4,7 @@ Produce the day's video asset(s) end-to-end for the "Aether & Ash" channel.
 
 For a chosen theme (or the date-based rotation) and format, this:
   1. synthesizes theme audio            (../scripts/generate_theme_audio.py)
-  2. renders a branded, procedurally-animated video (make_animated_video.py)
+  2. renders a branded, procedurally-animated video (../scripts/make_animated_video.py)
   3. assigns the per-theme thumbnail     (assets/aether/thumbnails/gen/<key>.png)
   4. writes SEO metadata                 (make_metadata.py)
   5. runs QC on the durations            (59s Short / 870s (14:30) feature)
@@ -93,8 +93,9 @@ def produce_one(theme, fmt, out_dir, seed):
     meta = f"{stem}_meta.json"
 
     gta = os.path.join(SHARED, "generate_theme_audio.py")
-    mav = os.path.join(HERE, "make_animated_video.py")
+    mav = os.path.join(SHARED, "make_animated_video.py")
     mm = os.path.join(HERE, "make_metadata.py")
+    icon = os.path.join(BRAND, "icon.png")
 
     # Optional wellness frequency layers (tone/beat) plus tone-shaping.
     freq = T.synth_args(theme)
@@ -103,7 +104,7 @@ def produce_one(theme, fmt, out_dir, seed):
          "--seed", str(seed), "--out", audio] + freq)
     run([sys.executable, mav, "--audio", audio, "--duration-seconds", str(duration),
          "--width", str(width), "--height", str(height), "--color", color,
-         "--seed", str(seed), "--out", video])
+         "--icon", icon, "--seed", str(seed), "--out", video])
     run([sys.executable, mm, "--theme", key, "--format", fmt, "--out", meta])
 
     # Long-form (feature) gets the per-theme clickable thumbnail. Shorts use

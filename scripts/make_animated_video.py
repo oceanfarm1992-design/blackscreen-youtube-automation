@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """
-Render a branded, procedurally-animated "Aether & Ash" video: a slow, unique
-generative visual (a soft organic noise-cloud, tinted to the theme's accent
-color, slowly drifting/panning) plus the branded ember icon, muxed with the
-theme's audio track.
+Render a branded, procedurally-animated video for any of the dark-ambient
+channels: a slow, unique generative visual (a soft organic noise-cloud,
+tinted to the theme's accent color, slowly drifting/panning) plus the
+channel's branded icon, muxed with the theme's audio track.
+
+Shared across channels (Aether & Ash, Sanctuary of Sci, ...) -- each channel
+just passes its own --icon and per-theme --color. See each channel's
+produce.py for how it's invoked.
 
 The noise field itself is generated in Python (numpy FFT-shaped noise +
 one-time PIL Gaussian blur), then the camera pans slowly across it per
@@ -18,24 +22,20 @@ Actions installs (confirmed by a real CI failure: "No such filter: 'perlin'").
 Generating the noise in Python instead of relying on the runner's ffmpeg
 feature set removes that whole class of "works locally, breaks in CI" risk.
 
+`_noise_field` and `_channel_gain` are also imported directly by each
+channel's make_thumbnails.py, to render a matching still frame as the
+thumbnail background (same visual engine, no separate art needed).
+
 Usage:
     python make_animated_video.py --audio audio.wav --duration-seconds 870 \
-        --width 1920 --height 1080 --color ff7a33 \
+        --width 1920 --height 1080 --color ff7a33 --icon path/to/icon.png \
         --seed 20260912 --out feature.mp4
-    python make_animated_video.py --audio short.wav --duration-seconds 59 \
-        --width 1080 --height 1920 --color 6a2fb0 \
-        --seed 20260912 --out short.mp4
 """
 import argparse
-import os
 import subprocess
 
 import numpy as np
 from PIL import Image, ImageFilter
-
-HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
-ICON = os.path.join(ROOT, "assets", "aether", "branding", "icon.png")
 
 FPS = 18                 # slow, deliberate motion -- matches the ambient mood
 INTERNAL_SCALE = 0.4167  # render the generative layer at ~5/12 size, then upscale
@@ -94,8 +94,7 @@ def render_frames(out_pipe, duration_sec, iw, ih, color, seed):
 
     n_frames = int(round(duration_sec * FPS))
     dxs, dys = _pan_path(n_frames, duration_sec, max_dx, max_dy, rng)
-    rr, gg, bb = _channel_gain(color)
-    gains = np.array([rr, gg, bb], dtype=np.float32)
+    gains = np.array(_channel_gain(color), dtype=np.float32)
 
     for i in range(n_frames):
         view = field[dys[i]:dys[i] + ih, dxs[i]:dxs[i] + iw]
@@ -103,7 +102,7 @@ def render_frames(out_pipe, duration_sec, iw, ih, color, seed):
         out_pipe.write(np.clip(rgb, 0, 255).astype(np.uint8).tobytes())
 
 
-def build_ffmpeg_command(audio_path, duration_sec, width, height, out_path, iw, ih):
+def build_ffmpeg_command(audio_path, duration_sec, width, height, out_path, iw, ih, icon):
     icon_w = _even(width * 0.09)
     filter_complex = (
         f"[0:v]eq=saturation=1.3:brightness='0.03*sin(2*PI*t/240)':eval=frame,"
@@ -116,7 +115,7 @@ def build_ffmpeg_command(audio_path, duration_sec, width, height, out_path, iw, 
         "ffmpeg", "-y",
         "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{iw}x{ih}", "-r", str(FPS),
         "-i", "pipe:0",
-        "-i", ICON,
+        "-i", icon,
         "-i", audio_path,
         "-filter_complex", filter_complex,
         "-map", "[vout]", "-map", "2:a",
@@ -136,6 +135,7 @@ def main():
     p.add_argument("--width", type=int, required=True)
     p.add_argument("--height", type=int, required=True)
     p.add_argument("--color", required=True, help="hex accent color, e.g. ff7a33")
+    p.add_argument("--icon", required=True, help="path to the channel's branded icon PNG")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--out", default="animated.mp4")
     args = p.parse_args()
@@ -144,7 +144,7 @@ def main():
     ih = _even(args.height * INTERNAL_SCALE)
 
     cmd = build_ffmpeg_command(args.audio, args.duration_seconds, args.width,
-                                args.height, args.out, iw, ih)
+                                args.height, args.out, iw, ih, args.icon)
     print("Running:", " ".join(cmd))
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
     try:
