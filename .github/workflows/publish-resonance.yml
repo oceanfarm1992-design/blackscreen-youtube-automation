@@ -1,0 +1,117 @@
+name: daily-produce-resonance
+
+# Produces "Aether Resonance" videos, ONE per run, spread across the day so
+# runs never overlap. 1 feature (14:30, real procedural animation,
+# 1920x1080) + 1 Short (59s, 1080x1920) per day.
+#
+# NOTE: this is a DIFFERENT channel from "Aether & Ash" (publish-aether.yml)
+# -- similar name, unrelated brand/catalog/credentials (RESONANCE_YT_* vs
+# AETHER_YT_*). Do not confuse the two workflows.
+#
+# The 2 runs fire 12h apart. Each cron maps to a "slot" 0..1 (see
+# resonance/produce.py --slot): slot 0 = the feature, slot 1 = the Short.
+# Musics rotate through the whole theme library in a continuous cycle. Runs
+# on a PUBLIC repo so standard-runner minutes are free and unmetered.
+#
+# Scheduled on hours 11 and 23 UTC -- distinct from every other channel's
+# workflow in this repo (Meditated Sleeping: 0/12, Aether & Ash: 5/17,
+# Sanctuary of Sci: 2/14, Hearth & Quill: 7/19, The Static Horizon: 9/21)
+# so none of them ever collide.
+#
+# YouTube quota: 10,000 units/day. 1 feature + 1 short/day is comfortably
+# under quota on a single OAuth project.
+#
+# Optional repo Secrets (Settings -> Secrets and variables -> Actions). If
+# present, the day's videos are uploaded to the Aether Resonance channel as
+# PUBLIC. Without them, the assets are produced and saved as run artifacts
+# only. Use the workflow_dispatch "privacy" input to override to
+# private/unlisted for a manual run.
+#   RESONANCE_YT_CLIENT_ID, RESONANCE_YT_CLIENT_SECRET, RESONANCE_YT_REFRESH_TOKEN
+
+on:
+  schedule:
+    - cron: "0 11 * * *"    # slot 0   11:00 UTC  feature
+    - cron: "0 23 * * *"    # slot 1   23:00 UTC  short
+  workflow_dispatch:
+    inputs:
+      privacy:
+        description: "Upload visibility: private | unlisted | public"
+        default: "public"
+      shorts:
+        description: "Test only: number of Shorts (0 = full daily batch)"
+        default: "0"
+      longs:
+        description: "Test only: number of features (0 = full daily batch)"
+        default: "0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-produce-resonance
+  cancel-in-progress: false
+
+jobs:
+  produce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      RESONANCE_YT_CLIENT_ID: ${{ secrets.RESONANCE_YT_CLIENT_ID }}
+      RESONANCE_YT_CLIENT_SECRET: ${{ secrets.RESONANCE_YT_CLIENT_SECRET }}
+      RESONANCE_YT_REFRESH_TOKEN: ${{ secrets.RESONANCE_YT_REFRESH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Map schedule -> slot
+        id: slot
+        run: |
+          case "${{ github.event.schedule }}" in
+            "0 11 * * *")  echo "slot=0" >> "$GITHUB_OUTPUT" ;;
+            "0 23 * * *")  echo "slot=1" >> "$GITHUB_OUTPUT" ;;
+            *)             echo "slot=" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Produce video(s) + QC
+        run: |
+          SHORTS="${{ github.event.inputs.shorts || 0 }}"
+          LONGS="${{ github.event.inputs.longs || 0 }}"
+          SLOT="${{ steps.slot.outputs.slot }}"
+          if [ "$SHORTS" != "0" ] || [ "$LONGS" != "0" ]; then
+            echo "Manual test batch: $LONGS feature(s) + $SHORTS short(s)"
+            python resonance/produce.py --shorts "$SHORTS" --longs "$LONGS" --out-dir out
+          elif [ -n "$SLOT" ]; then
+            echo "Scheduled slot $SLOT"
+            python resonance/produce.py --slot "$SLOT" --out-dir out
+          else
+            echo "Manual full daily batch"
+            python resonance/produce.py --daily --out-dir out
+          fi
+
+      - name: Show queue manifests
+        run: |
+          for m in out/*_manifest.json; do echo "--- $m ---"; cat "$m"; echo; done
+
+      - name: Upload to YouTube as PUBLIC (only if secrets are set)
+        if: ${{ env.RESONANCE_YT_REFRESH_TOKEN != '' }}
+        run: |
+          python resonance/publish_queue.py --out-dir out --privacy "${{ github.event.inputs.privacy || 'public' }}"
+
+      - name: Upload metadata + manifests as artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: metadata-resonance-${{ github.run_id }}
+          path: |
+            out/*_manifest.json
+            out/*_meta.json
+          retention-days: 14
