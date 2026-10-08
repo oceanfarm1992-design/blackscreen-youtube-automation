@@ -85,6 +85,7 @@ def produce_one(theme, fmt, out_dir, seed):
     duration = SHORT_SECONDS if fmt == "short" else T.FEATURE_SECONDS
     width, height = (1080, 1920) if fmt == "short" else (1920, 1080)
     color = T.ACCENT_COLORS.get(key, "3c4b5f")
+    topic = T.topic_for(key)
 
     stem = os.path.join(out_dir, f"{key}_{fmt}")
     audio = f"{stem}_audio.wav"
@@ -104,7 +105,7 @@ def produce_one(theme, fmt, out_dir, seed):
          "--seed", str(seed), "--out", audio] + freq)
     run([sys.executable, mav, "--audio", audio, "--duration-seconds", str(duration),
          "--width", str(width), "--height", str(height), "--color", color,
-         "--icon", icon, "--seed", str(seed), "--out", video])
+         "--icon", icon, "--topic", topic, "--seed", str(seed), "--out", video])
     run([sys.executable, mm, "--theme", key, "--format", fmt, "--out", meta])
 
     # Long-form (feature) gets the per-theme clickable thumbnail. Shorts use

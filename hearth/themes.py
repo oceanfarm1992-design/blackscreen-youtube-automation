@@ -261,6 +261,23 @@ ACCENT_COLORS = {
     "ink_parchment": "8a7050",
 }
 
+# Topic for each theme's generative animation (scripts/make_animated_video.py
+# --topic) -- matches the pan motion/flicker profile to what the theme is
+# actually about (e.g. the crackling-fireplace themes get a fast, warm
+# flicker). Falls back to "neutral" for any key left unlisted.
+TOPICS = {
+    "candlelit_study": "fire",
+    "leaded_glass_rain": "water",
+    "quiet_scriptorium": "stone",
+    "tavern_hearth": "fire",
+    "lantern_ink": "fire",
+    "old_library_hush": "stone",
+    "winter_study": "fire",
+    "moonlit_manuscript": "void",
+    "hearthside_tales": "fire",
+    "ink_parchment": "stone",
+}
+
 
 def synth_args(theme: dict) -> list:
     a = []
@@ -287,6 +304,11 @@ def playlist_for(theme_key: str) -> dict | None:
         if theme_key in p["themes"]:
             return p
     return None
+
+
+def topic_for(theme_key: str) -> str:
+    """The --topic to pass to make_animated_video.py for this theme."""
+    return TOPICS.get(theme_key, "neutral")
 
 DESCRIPTION_FOOTER = (
     "\n\n— {brand} — {tagline}\n\n"

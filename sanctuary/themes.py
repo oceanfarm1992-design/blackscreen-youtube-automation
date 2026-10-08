@@ -287,6 +287,22 @@ ACCENT_COLORS = {
     "signal_lost": "3a4a5a",
 }
 
+# Topic for each theme's generative animation (scripts/make_animated_video.py
+# --topic) -- matches the pan motion/flicker profile to what the theme is
+# actually about. Falls back to "neutral" for any key left unlisted.
+TOPICS = {
+    "sleeper_drift": "void",
+    "nebula_watch": "void",
+    "station_hum": "stone",
+    "cryo_bay": "water",
+    "observatory_deck": "void",
+    "ion_trail": "fire",
+    "long_dark": "void",
+    "starlight_convergence": "wind",
+    "zero_g_drift": "wind",
+    "signal_lost": "stone",
+}
+
 
 def synth_args(theme: dict) -> list:
     """generate_theme_audio.py CLI flags for a theme's frequency layers and
@@ -315,6 +331,11 @@ def playlist_for(theme_key: str) -> dict | None:
         if theme_key in p["themes"]:
             return p
     return None
+
+
+def topic_for(theme_key: str) -> str:
+    """The --topic to pass to make_animated_video.py for this theme."""
+    return TOPICS.get(theme_key, "neutral")
 
 # Truthful, non-AI disclosure: 100% algorithmic sound synthesis, no samples,
 # no AI generation.

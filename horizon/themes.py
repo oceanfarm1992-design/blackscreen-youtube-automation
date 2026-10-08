@@ -264,6 +264,22 @@ ACCENT_COLORS = {
     "overpass_3am": "1a1a3a",
 }
 
+# Topic for each theme's generative animation (scripts/make_animated_video.py
+# --topic) -- matches the pan motion/flicker profile to what the theme is
+# actually about. Falls back to "neutral" for any key left unlisted.
+TOPICS = {
+    "night_drive": "wind",
+    "empty_parking_structure": "stone",
+    "forgotten_mall": "stone",
+    "static_transmission": "void",
+    "rain_interstate": "water",
+    "suburban_hush": "void",
+    "vhs_afterglow": "fire",
+    "neon_corridor": "fire",
+    "last_broadcast": "void",
+    "overpass_3am": "stone",
+}
+
 
 def synth_args(theme: dict) -> list:
     a = []
@@ -290,6 +306,11 @@ def playlist_for(theme_key: str) -> dict | None:
         if theme_key in p["themes"]:
             return p
     return None
+
+
+def topic_for(theme_key: str) -> str:
+    """The --topic to pass to make_animated_video.py for this theme."""
+    return TOPICS.get(theme_key, "neutral")
 
 DESCRIPTION_FOOTER = (
     "\n\n— {brand} — {tagline}\n\n"

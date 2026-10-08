@@ -286,6 +286,22 @@ ACCENT_COLORS = {
     "pink_noise_veil": "9a6a7a",
 }
 
+# Topic for each theme's generative animation (scripts/make_animated_video.py
+# --topic) -- matches the pan motion/flicker profile to what the theme is
+# actually about. Falls back to "neutral" for any key left unlisted.
+TOPICS = {
+    "still_water": "water",
+    "crown_light": "fire",
+    "root_anchor": "stone",
+    "heart_bloom": "wind",
+    "third_eye_drift": "void",
+    "cellular_renewal": "wind",
+    "miracle_tone": "water",
+    "singing_bowl_sanctuary": "stone",
+    "theta_gateway": "void",
+    "pink_noise_veil": "water",
+}
+
 
 def synth_args(theme: dict) -> list:
     a = []
@@ -312,6 +328,11 @@ def playlist_for(theme_key: str) -> dict | None:
         if theme_key in p["themes"]:
             return p
     return None
+
+
+def topic_for(theme_key: str) -> str:
+    """The --topic to pass to make_animated_video.py for this theme."""
+    return TOPICS.get(theme_key, "neutral")
 
 DESCRIPTION_FOOTER = (
     "\n\n— {brand} — {tagline}\n\n"

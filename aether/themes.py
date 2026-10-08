@@ -48,6 +48,28 @@ ACCENT_COLORS = {
     "obsidian_tower": "37415a",
 }
 
+# Topic for each theme's generative animation (scripts/make_animated_video.py
+# --topic) -- matches the pan motion/flicker profile to what the theme is
+# actually about (e.g. ember/fire themes flicker fast and warm; space/void
+# themes barely move). Falls back to "neutral" for any key left unlisted.
+TOPICS = {
+    "void_drone": "void",
+    "abyssal_silence": "void",
+    "ember_focus": "fire",
+    "cosmic_drift": "void",
+    "creative_flow": "water",
+    "shadow_ink": "water",
+    "calm_the_night": "void",
+    "slumber_of_ash": "void",
+    "ethereal_ruins": "stone",
+    "ember_solitude": "fire",
+    "markov_chamber": "void",
+    "ash_rain_wind": "wind",
+    "black_hole": "void",
+    "monastic_echoes": "stone",
+    "obsidian_tower": "stone",
+}
+
 # Ordered rotation. `synth` names a function in scripts/generate_theme_audio.py.
 THEMES = [
     {
@@ -420,6 +442,11 @@ def playlist_for(theme_key: str) -> dict | None:
         if theme_key in p["themes"]:
             return p
     return None
+
+
+def topic_for(theme_key: str) -> str:
+    """The --topic to pass to make_animated_video.py for this theme."""
+    return TOPICS.get(theme_key, "neutral")
 
 # Appended to every description. Truthful, non-AI disclosure: this channel's
 # audio is 100% algorithmic sound synthesis (numpy/scipy DSP), no samples and

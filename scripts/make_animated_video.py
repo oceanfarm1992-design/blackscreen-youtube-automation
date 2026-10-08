@@ -26,10 +26,17 @@ feature set removes that whole class of "works locally, breaks in CI" risk.
 channel's make_thumbnails.py, to render a matching still frame as the
 thumbnail background (same visual engine, no separate art needed).
 
+`--topic` (one of TOPIC_PROFILES: fire/water/wind/void/stone/neutral) keeps
+the field itself fully abstract -- no literal flame/water/leaf shapes are
+drawn -- but pushes the pan motion and color grade to match the theme's
+subject (e.g. fire flickers fast with a warm, jittery pan; water drifts
+slow and smooth; void barely moves at all). Each channel's themes.py maps
+its theme keys to a topic; produce.py passes it straight through.
+
 Usage:
     python make_animated_video.py --audio audio.wav --duration-seconds 870 \
         --width 1920 --height 1080 --color ff7a33 --icon path/to/icon.png \
-        --seed 20260912 --out feature.mp4
+        --topic fire --seed 20260912 --out feature.mp4
 """
 import argparse
 import subprocess
@@ -40,6 +47,52 @@ from PIL import Image, ImageFilter
 FPS = 18                 # slow, deliberate motion -- matches the ambient mood
 INTERNAL_SCALE = 0.4167  # render the generative layer at ~5/12 size, then upscale
 PAN_MARGIN = 0.35        # fraction of viewport size the camera can drift across
+
+# Per-topic motion/color profiles. These keep the shared engine fully
+# abstract -- no literal flame/water/leaf shapes are drawn -- but push the
+# existing noise-field's *pan motion* and *color grade* to evoke each
+# theme's subject (e.g. a fast, jittery, warm flicker for a fireside theme
+# vs. a slow, smooth, cool drift for a water theme). `neutral` reproduces
+# the original single-profile behavior exactly, so themes that don't pass
+# --topic are unaffected.
+TOPIC_PROFILES = {
+    "neutral": dict(
+        fx_range=(0.7, 1.3), fy_range=(0.7, 1.3), amp_x=1.0, amp_y=1.0,
+        jitter=0.0, jitter_freq=(10, 16), drift_y=0.0,
+        flicker_period=240.0, flicker_amp=0.03, saturation=1.3, contrast=1.0,
+        vignette="PI/3.5",
+    ),
+    "fire": dict(
+        fx_range=(1.1, 1.6), fy_range=(1.3, 1.9), amp_x=0.55, amp_y=0.5,
+        jitter=0.10, jitter_freq=(12, 20), drift_y=0.15,
+        flicker_period=7.0, flicker_amp=0.07, saturation=1.5, contrast=1.08,
+        vignette="PI/3.2",
+    ),
+    "water": dict(
+        fx_range=(0.5, 0.8), fy_range=(0.3, 0.5), amp_x=1.0, amp_y=0.35,
+        jitter=0.02, jitter_freq=(6, 10), drift_y=0.0,
+        flicker_period=55.0, flicker_amp=0.035, saturation=1.38, contrast=1.0,
+        vignette="PI/3.5",
+    ),
+    "wind": dict(
+        fx_range=(0.6, 1.0), fy_range=(0.4, 0.7), amp_x=0.85, amp_y=0.55,
+        jitter=0.015, jitter_freq=(5, 9), drift_y=0.0,
+        flicker_period=90.0, flicker_amp=0.03, saturation=1.25, contrast=1.0,
+        vignette="PI/3.6",
+    ),
+    "void": dict(
+        fx_range=(0.3, 0.5), fy_range=(0.3, 0.5), amp_x=0.4, amp_y=0.4,
+        jitter=0.0, jitter_freq=(10, 16), drift_y=0.0,
+        flicker_period=420.0, flicker_amp=0.02, saturation=1.2, contrast=1.02,
+        vignette="PI/3.2",
+    ),
+    "stone": dict(
+        fx_range=(0.4, 0.6), fy_range=(0.4, 0.6), amp_x=0.45, amp_y=0.45,
+        jitter=0.0, jitter_freq=(10, 16), drift_y=0.0,
+        flicker_period=300.0, flicker_amp=0.015, saturation=1.05, contrast=0.98,
+        vignette="PI/3.8",
+    ),
+}
 
 
 def _even(n):
@@ -75,25 +128,46 @@ def _noise_field(w, h, rng, tilt=1.6, blur_frac=0.03):
     return np.asarray(img).astype(np.float32) / 255.0
 
 
-def _pan_path(n_frames, duration_sec, max_dx, max_dy, rng):
+def _pan_path(n_frames, duration_sec, max_dx, max_dy, rng, profile):
     """Smooth, slow lissajous-style drift across the noise field, so the
-    camera never repeats the same path twice (random phase per render)."""
+    camera never repeats the same path twice (random phase per render).
+    `profile` (a TOPIC_PROFILES entry) scales the amplitude/frequency of
+    that drift and can layer a faster jitter and a one-way drift bias on
+    top, so e.g. a fire topic flickers quickly in place while a void topic
+    barely moves at all."""
     t = np.linspace(0, 2 * np.pi, n_frames)
     px, py = rng.uniform(0, 2 * np.pi, size=2)
-    fx, fy = rng.uniform(0.7, 1.3, size=2)
-    dx = (0.5 + 0.5 * np.sin(t * fx + px)) * max_dx
-    dy = (0.5 + 0.5 * np.sin(t * fy + py)) * max_dy
+    fx = rng.uniform(*profile["fx_range"])
+    fy = rng.uniform(*profile["fy_range"])
+    amp_x = max_dx * profile["amp_x"]
+    amp_y = max_dy * profile["amp_y"]
+    dx = (0.5 + 0.5 * np.sin(t * fx + px)) * amp_x
+    dy = (0.5 + 0.5 * np.sin(t * fy + py)) * amp_y
+
+    if profile["drift_y"]:
+        dy = dy + profile["drift_y"] * max_dy * (t / (2 * np.pi))
+
+    if profile["jitter"]:
+        jlo, jhi = profile["jitter_freq"]
+        jfx, jfy = rng.uniform(jlo, jhi, size=2)
+        jpx, jpy = rng.uniform(0, 2 * np.pi, size=2)
+        dx = dx + profile["jitter"] * max_dx * np.sin(t * jfx + jpx)
+        dy = dy + profile["jitter"] * max_dy * np.sin(t * jfy + jpy)
+
+    dx = np.clip(dx, 0, max_dx)
+    dy = np.clip(dy, 0, max_dy)
     return dx.astype(int), dy.astype(int)
 
 
-def render_frames(out_pipe, duration_sec, iw, ih, color, seed):
+def render_frames(out_pipe, duration_sec, iw, ih, color, seed, topic="neutral"):
+    profile = TOPIC_PROFILES.get(topic, TOPIC_PROFILES["neutral"])
     rng = np.random.default_rng(seed)
     max_dx = _even(iw * PAN_MARGIN)
     max_dy = _even(ih * PAN_MARGIN)
     field = _noise_field(iw + max_dx, ih + max_dy, rng)
 
     n_frames = int(round(duration_sec * FPS))
-    dxs, dys = _pan_path(n_frames, duration_sec, max_dx, max_dy, rng)
+    dxs, dys = _pan_path(n_frames, duration_sec, max_dx, max_dy, rng, profile)
     gains = np.array(_channel_gain(color), dtype=np.float32)
 
     for i in range(n_frames):
@@ -102,11 +176,14 @@ def render_frames(out_pipe, duration_sec, iw, ih, color, seed):
         out_pipe.write(np.clip(rgb, 0, 255).astype(np.uint8).tobytes())
 
 
-def build_ffmpeg_command(audio_path, duration_sec, width, height, out_path, iw, ih, icon):
+def build_ffmpeg_command(audio_path, duration_sec, width, height, out_path, iw, ih, icon,
+                          topic="neutral"):
+    profile = TOPIC_PROFILES.get(topic, TOPIC_PROFILES["neutral"])
     icon_w = _even(width * 0.09)
     filter_complex = (
-        f"[0:v]eq=saturation=1.3:brightness='0.03*sin(2*PI*t/240)':eval=frame,"
-        f"vignette=PI/3.5,scale={width}:{height}:flags=lanczos,format=rgba[bg];"
+        f"[0:v]eq=saturation={profile['saturation']}:contrast={profile['contrast']}:"
+        f"brightness='{profile['flicker_amp']}*sin(2*PI*t/{profile['flicker_period']})':eval=frame,"
+        f"vignette={profile['vignette']},scale={width}:{height}:flags=lanczos,format=rgba[bg];"
         f"[1:v]scale={icon_w}:-1,colorchannelmixer=aa=0.32[icon];"
         f"[bg][icon]overlay=W-w-{_even(width*0.03)}:H-h-{_even(height*0.03)}:format=auto,"
         f"format=yuv420p[vout]"
@@ -136,6 +213,9 @@ def main():
     p.add_argument("--height", type=int, required=True)
     p.add_argument("--color", required=True, help="hex accent color, e.g. ff7a33")
     p.add_argument("--icon", required=True, help="path to the channel's branded icon PNG")
+    p.add_argument("--topic", default="neutral", choices=sorted(TOPIC_PROFILES),
+                   help="motion/flicker profile matching the theme's subject "
+                        "(fire/water/wind/void/stone/neutral)")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--out", default="animated.mp4")
     args = p.parse_args()
@@ -144,11 +224,11 @@ def main():
     ih = _even(args.height * INTERNAL_SCALE)
 
     cmd = build_ffmpeg_command(args.audio, args.duration_seconds, args.width,
-                                args.height, args.out, iw, ih, args.icon)
+                                args.height, args.out, iw, ih, args.icon, args.topic)
     print("Running:", " ".join(cmd))
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
     try:
-        render_frames(proc.stdin, args.duration_seconds, iw, ih, args.color, args.seed)
+        render_frames(proc.stdin, args.duration_seconds, iw, ih, args.color, args.seed, args.topic)
     finally:
         proc.stdin.close()
     ret = proc.wait()
