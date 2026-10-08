@@ -28,10 +28,13 @@ thumbnail background (same visual engine, no separate art needed).
 
 `--topic` (one of TOPIC_PROFILES: fire/water/wind/void/stone/neutral) keeps
 the field itself fully abstract -- no literal flame/water/leaf shapes are
-drawn -- but pushes the pan motion and color grade to match the theme's
-subject (e.g. fire flickers fast with a warm, jittery pan; water drifts
-slow and smooth; void barely moves at all). Each channel's themes.py maps
-its theme keys to a topic; produce.py passes it straight through.
+drawn -- but pushes the noise-field *texture* (tilt/blur, i.e. how
+turbulent vs. smooth the cloud shape is), its pan motion, and the color
+grade to match the theme's subject (e.g. fire is sharper/grainier and
+flickers fast with a warm, jittery pan; water is smooth and glossy and
+drifts slow; void is extremely soft and barely moves at all). Each
+channel's themes.py maps its theme keys to a topic; produce.py passes it
+straight through.
 
 Usage:
     python make_animated_video.py --audio audio.wav --duration-seconds 870 \
@@ -60,37 +63,37 @@ TOPIC_PROFILES = {
         fx_range=(0.7, 1.3), fy_range=(0.7, 1.3), amp_x=1.0, amp_y=1.0,
         jitter=0.0, jitter_freq=(10, 16), drift_y=0.0,
         flicker_period=240.0, flicker_amp=0.03, saturation=1.3, contrast=1.0,
-        vignette="PI/3.5",
+        vignette="PI/3.5", tilt=1.6, blur_frac=0.030,
     ),
     "fire": dict(
         fx_range=(1.1, 1.6), fy_range=(1.3, 1.9), amp_x=0.55, amp_y=0.5,
         jitter=0.10, jitter_freq=(12, 20), drift_y=0.15,
         flicker_period=7.0, flicker_amp=0.07, saturation=1.5, contrast=1.08,
-        vignette="PI/3.2",
+        vignette="PI/3.2", tilt=1.15, blur_frac=0.016,
     ),
     "water": dict(
         fx_range=(0.5, 0.8), fy_range=(0.3, 0.5), amp_x=1.0, amp_y=0.35,
         jitter=0.02, jitter_freq=(6, 10), drift_y=0.0,
         flicker_period=55.0, flicker_amp=0.035, saturation=1.38, contrast=1.0,
-        vignette="PI/3.5",
+        vignette="PI/3.5", tilt=2.10, blur_frac=0.050,
     ),
     "wind": dict(
         fx_range=(0.6, 1.0), fy_range=(0.4, 0.7), amp_x=0.85, amp_y=0.55,
         jitter=0.015, jitter_freq=(5, 9), drift_y=0.0,
         flicker_period=90.0, flicker_amp=0.03, saturation=1.25, contrast=1.0,
-        vignette="PI/3.6",
+        vignette="PI/3.6", tilt=1.35, blur_frac=0.024,
     ),
     "void": dict(
         fx_range=(0.3, 0.5), fy_range=(0.3, 0.5), amp_x=0.4, amp_y=0.4,
         jitter=0.0, jitter_freq=(10, 16), drift_y=0.0,
         flicker_period=420.0, flicker_amp=0.02, saturation=1.2, contrast=1.02,
-        vignette="PI/3.2",
+        vignette="PI/3.2", tilt=2.30, blur_frac=0.055,
     ),
     "stone": dict(
         fx_range=(0.4, 0.6), fy_range=(0.4, 0.6), amp_x=0.45, amp_y=0.45,
         jitter=0.0, jitter_freq=(10, 16), drift_y=0.0,
         flicker_period=300.0, flicker_amp=0.015, saturation=1.05, contrast=0.98,
-        vignette="PI/3.8",
+        vignette="PI/3.8", tilt=1.75, blur_frac=0.022,
     ),
 }
 
@@ -164,7 +167,8 @@ def render_frames(out_pipe, duration_sec, iw, ih, color, seed, topic="neutral"):
     rng = np.random.default_rng(seed)
     max_dx = _even(iw * PAN_MARGIN)
     max_dy = _even(ih * PAN_MARGIN)
-    field = _noise_field(iw + max_dx, ih + max_dy, rng)
+    field = _noise_field(iw + max_dx, ih + max_dy, rng,
+                          tilt=profile["tilt"], blur_frac=profile["blur_frac"])
 
     n_frames = int(round(duration_sec * FPS))
     dxs, dys = _pan_path(n_frames, duration_sec, max_dx, max_dy, rng, profile)
