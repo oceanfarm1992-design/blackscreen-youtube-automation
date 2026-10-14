@@ -1,0 +1,85 @@
+name: backfill-thumbnails
+
+# Give a channel's existing feature videos their custom thumbnails (e.g. after
+# the channel is phone-verified -- features uploaded before that show an
+# auto-picked frame). Dry run by default: lists what would change and saves the
+# rendered thumbnails as an artifact. Re-run with apply=true to set them.
+# See scripts/backfill_thumbnails.py.
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "Channel folder"
+        type: choice
+        options: [aether, hearth, sanctuary, horizon, resonance, manor]
+      apply:
+        description: "true = set the thumbnails on YouTube; false = dry run"
+        type: choice
+        options: ["false", "true"]
+        default: "false"
+      video_id:
+        description: "Optional: only this video id"
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backfill-thumbnails-${{ github.event.inputs.channel }}
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      AETHER_YT_CLIENT_ID: ${{ secrets.AETHER_YT_CLIENT_ID }}
+      AETHER_YT_CLIENT_SECRET: ${{ secrets.AETHER_YT_CLIENT_SECRET }}
+      AETHER_YT_REFRESH_TOKEN: ${{ secrets.AETHER_YT_REFRESH_TOKEN }}
+      HEARTH_YT_CLIENT_ID: ${{ secrets.HEARTH_YT_CLIENT_ID }}
+      HEARTH_YT_CLIENT_SECRET: ${{ secrets.HEARTH_YT_CLIENT_SECRET }}
+      HEARTH_YT_REFRESH_TOKEN: ${{ secrets.HEARTH_YT_REFRESH_TOKEN }}
+      SANCTUARY_YT_CLIENT_ID: ${{ secrets.SANCTUARY_YT_CLIENT_ID }}
+      SANCTUARY_YT_CLIENT_SECRET: ${{ secrets.SANCTUARY_YT_CLIENT_SECRET }}
+      SANCTUARY_YT_REFRESH_TOKEN: ${{ secrets.SANCTUARY_YT_REFRESH_TOKEN }}
+      HORIZON_YT_CLIENT_ID: ${{ secrets.HORIZON_YT_CLIENT_ID }}
+      HORIZON_YT_CLIENT_SECRET: ${{ secrets.HORIZON_YT_CLIENT_SECRET }}
+      HORIZON_YT_REFRESH_TOKEN: ${{ secrets.HORIZON_YT_REFRESH_TOKEN }}
+      RESONANCE_YT_CLIENT_ID: ${{ secrets.RESONANCE_YT_CLIENT_ID }}
+      RESONANCE_YT_CLIENT_SECRET: ${{ secrets.RESONANCE_YT_CLIENT_SECRET }}
+      RESONANCE_YT_REFRESH_TOKEN: ${{ secrets.RESONANCE_YT_REFRESH_TOKEN }}
+      MANOR_YT_CLIENT_ID: ${{ secrets.MANOR_YT_CLIENT_ID }}
+      MANOR_YT_CLIENT_SECRET: ${{ secrets.MANOR_YT_CLIENT_SECRET }}
+      MANOR_YT_REFRESH_TOKEN: ${{ secrets.MANOR_YT_REFRESH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          sudo apt-get update && sudo apt-get install -y fonts-dejavu-core fonts-dejavu-extra
+
+      - name: Backfill thumbnails
+        env:
+          CHANNEL: ${{ github.event.inputs.channel }}
+          APPLY: ${{ github.event.inputs.apply }}
+          VIDEO_ID: ${{ github.event.inputs.video_id }}
+        run: |
+          ARGS=(--channel "$CHANNEL")
+          [ "$APPLY" = "true" ] && ARGS+=(--apply)
+          [ -n "$VIDEO_ID" ] && ARGS+=(--video-id "$VIDEO_ID")
+          python scripts/backfill_thumbnails.py "${ARGS[@]}"
+
+      - name: Save rendered thumbnails
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: thumbnails-${{ github.event.inputs.channel }}-${{ github.run_id }}
+          path: out_thumbs/*.png
+          retention-days: 14

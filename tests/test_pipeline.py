@@ -156,6 +156,19 @@ def test_description_names_the_volume(folder):
     assert f"{T.THEMES[0]['name']} (Vol. 5)" in meta["description"].splitlines()[0]
 
 
+def test_backfill_parses_durations_and_titles():
+    B = load("scripts", "backfill_thumbnails")
+    assert B.iso_seconds("PT14M30S") == 870
+    assert B.iso_seconds("PT59S") == 59
+    assert B.iso_seconds("PT10H") == 36000
+    for folder in ANIMATED:
+        T = THEMES[folder]
+        for theme in T.THEMES:
+            for vol in (None, 4):
+                title = K.build_metadata(T, theme, "long", vol)["title"]
+                assert B.theme_for_title(T, title)["key"] == theme["key"], title
+
+
 # --------------------------------------------------------------------------- #
 class _Resp(dict):
     def __init__(self, status):
