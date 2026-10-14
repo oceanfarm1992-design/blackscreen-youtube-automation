@@ -21,6 +21,34 @@ CATEGORY_MUSIC = "10"
 TAG_CHAR_LIMIT = 480
 
 
+def with_volume(title: str, volume: int | None) -> str:
+    """Add 'Vol. N' just before the title's emoji ('Creek Hollow Vol. 3 🏞️ ...'),
+    so every repeat of a theme gets a distinct title instead of a duplicate."""
+    if not volume:
+        return title
+    tag = f" Vol. {volume}"
+    for i, ch in enumerate(title):
+        if i and title[i - 1] == " " and ord(ch) > 0x2500:  # first emoji/symbol
+            return title[:i - 1] + tag + title[i - 1:]
+    if title.endswith(" #shorts"):
+        return title[:-len(" #shorts")] + tag + " #shorts"
+    return title + tag
+
+
+def fit_title(title: str, limit: int = 100) -> str:
+    """YouTube hard-caps titles at 100 chars. Trim the trailing descriptor at a
+    word boundary, keeping a Short's closing '#shorts'."""
+    if len(title) <= limit:
+        return title
+    tail = " #shorts" if title.endswith(" #shorts") else ""
+    head = title[:len(title) - len(tail)]
+    room = limit - len(tail)
+    cut = head[:room]
+    if head[room] != " ":
+        cut = cut.rsplit(" ", 1)[0]
+    return cut.rstrip(" |-&,") + tail
+
+
 def pack_tags(theme: dict, fmt: str) -> list:
     pool = list(theme["tags"]) + T.GLOBAL_TAGS
     if fmt == "short":
@@ -40,9 +68,9 @@ def pack_tags(theme: dict, fmt: str) -> list:
     return tags
 
 
-def build_metadata(theme: dict, fmt: str) -> dict:
+def build_metadata(theme: dict, fmt: str, volume: int | None = None) -> dict:
     title = theme["short_title"] if fmt == "short" else theme["long_title"]
-    title = title[:100]
+    title = fit_title(with_volume(title, volume))
 
     lead = f"14 Minutes of {theme['name']}" if fmt == "long" else theme["name"]
     hashtags = " ".join("#" + t.replace(" ", "") for t in theme["tags"][:3])
@@ -79,11 +107,13 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--theme", default="auto", help="theme key or 'auto' for date rotation")
     p.add_argument("--format", required=True, choices=["short", "long"])
+    p.add_argument("--volume", type=int, default=None,
+                   help="repeat number of this theme; adds 'Vol. N' to the title")
     p.add_argument("--out", default="metadata.json")
     args = p.parse_args()
 
     theme = T.resolve_theme(args.theme)
-    meta = build_metadata(theme, args.format)
+    meta = build_metadata(theme, args.format, args.volume)
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
 

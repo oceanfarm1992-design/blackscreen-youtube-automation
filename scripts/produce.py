@@ -48,6 +48,12 @@ def run(cmd):
     subprocess.run(cmd, check=True)
 
 
+def volume_for(d, count, pos):
+    """1-based count of how many times this rotation position's theme has come
+    up since ANCHOR, so a theme's repeat uploads get distinct titles (Vol. N)."""
+    return max(1, ((d - T.ANCHOR).days * count + pos) // len(T.THEMES) + 1)
+
+
 def ffprobe_duration(path):
     out = subprocess.run(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration",
@@ -88,7 +94,7 @@ def qc(fmt, video_path, hours):
     return {"duration_sec": round(dur, 2), "resolution": res, "problems": problems}
 
 
-def produce_one(theme, fmt, out_dir, hours, seed):
+def produce_one(theme, fmt, out_dir, hours, seed, run_date, volume=None):
     key = theme["key"]
     # Long-form length is content-matched per theme (combos 3h, solo freq 8h,
     # nature/music 10h). An explicit --hours overrides it; otherwise use the map.
@@ -107,6 +113,7 @@ def produce_one(theme, fmt, out_dir, hours, seed):
     # Optional wellness frequency layers (Solfeggio/432 tone(s), brainwave beat,
     # bowl) plus tone-shaping (soft timbre, reverb wash, high-tone de-emphasis).
     freq = T.synth_args(theme)
+    vol = ["--volume", str(volume)] if volume else []
 
     has_ai_clips = os.path.isdir(os.path.join(CLIPS_DIR, key)) and any(
         f.endswith(".wav") for f in os.listdir(os.path.join(CLIPS_DIR, key))
@@ -118,21 +125,21 @@ def produce_one(theme, fmt, out_dir, hours, seed):
              "--seed", str(seed), "--out", audio] + freq)
         run([sys.executable, mv, "--audio", audio, "--background", FRAME_9x16,
              "--duration-seconds", str(SHORT_SECONDS), "--fps", "24", "--out", video])
-        run([sys.executable, mm, "--theme", key, "--format", "short", "--out", meta])
+        run([sys.executable, mm, "--theme", key, "--format", "short", "--out", meta] + vol)
     elif has_ai_clips:
         run([sys.executable, bla, "--theme", key, "--seconds", str(LONG_LOOP_SECONDS),
              "--seed", str(seed), "--out", audio])
         run([sys.executable, mv, "--audio", audio, "--background", FRAME_16x9,
              "--duration-hours", str(hours), "--fps", "1", "--out", video])
         run([sys.executable, mm, "--theme", key, "--format", "long", "--hours", str(hours),
-             "--out", meta])
+             "--out", meta] + vol)
     else:
         run([sys.executable, gta, "--theme", theme["synth"], "--loop-seconds", str(LONG_LOOP_SECONDS),
              "--seed", str(seed), "--out", audio] + freq)
         run([sys.executable, mv, "--audio", audio, "--background", FRAME_16x9,
              "--duration-hours", str(hours), "--fps", "1", "--out", video])
         run([sys.executable, mm, "--theme", key, "--format", "long", "--hours", str(hours),
-             "--out", meta])
+             "--out", meta] + vol)
 
     # Long-form gets the per-theme clickable thumbnail (scenic + headline).
     # Shorts use an auto-selected video frame — skip the custom thumbnail to save
@@ -147,7 +154,7 @@ def produce_one(theme, fmt, out_dir, hours, seed):
     report = qc(fmt, video, hours)
 
     manifest = {
-        "date": date.today().isoformat(),
+        "date": run_date.isoformat(),
         "theme": key,
         "theme_name": theme["name"],
         "format": fmt,
@@ -187,6 +194,10 @@ def main():
                    help="override long-form length; default = per-theme map "
                         "(combos 3h, solo freq 8h, nature/music 10h)")
     p.add_argument("--seed", type=int, default=None, help="defaults to YYYYMMDD")
+    p.add_argument("--date", default=None,
+                   help="YYYY-MM-DD this run is FOR (default: today). The scheduler "
+                        "passes the day the cron was scheduled for, because GitHub "
+                        "often starts crons hours late -- sometimes past midnight.")
     p.add_argument("--out-dir", default="out")
     args = p.parse_args()
 
@@ -194,7 +205,10 @@ def main():
             and args.slot is None):
         p.error("give --daily, --format, --slot, or --shorts/--longs")
 
-    seed = args.seed if args.seed is not None else int(date.today().strftime("%Y%m%d"))
+    run_date = date.fromisoformat(args.date) if args.date else date.today()
+    # Each day owns a block of 1000 seeds (slot/batch offsets stay inside it), so
+    # one day's Short (date+1) can never reuse the next day's feature seed.
+    seed = args.seed if args.seed is not None else int(run_date.strftime("%Y%m%d")) * 1000
     os.makedirs(args.out_dir, exist_ok=True)
 
     results = []
@@ -202,38 +216,45 @@ def main():
         # One video per run, so the day's uploads are spread out (never overlap).
         # slots 0..LONGS_PER_DAY-1 = long-forms; remaining slots = Shorts.
         # Each slot maps to a different music.
-        selection = T.daily_selection(count=T.DAILY_COUNT)
-        theme = selection[args.slot % len(selection)]
+        selection = T.daily_selection(run_date, count=T.DAILY_COUNT)
+        pos = args.slot % len(selection)
+        theme = selection[pos]
         fmt = "long" if args.slot < T.LONGS_PER_DAY else "short"
-        print(f"Slot {args.slot}: {theme['key']} {fmt}")
-        results.append(produce_one(theme, fmt, args.out_dir, args.hours, seed + args.slot))
+        print(f"Slot {args.slot} for {run_date}: {theme['key']} {fmt}")
+        results.append(produce_one(theme, fmt, args.out_dir, args.hours, seed + args.slot,
+                                   run_date, volume_for(run_date, T.DAILY_COUNT, pos)))
     elif args.shorts or args.longs:
         # Custom test batch: M long-forms + N Shorts from today's rotation.
         need = max(args.shorts, args.longs, 1)
-        selection = T.daily_selection(count=max(need, T.DAILY_COUNT))
+        count = max(need, T.DAILY_COUNT)
+        selection = T.daily_selection(run_date, count=count)
         print(f"Test batch: {args.longs} long(s) + {args.shorts} short(s) from: "
               + ", ".join(t["key"] for t in selection[:need]))
         for i in range(args.longs):
             results.append(produce_one(selection[i], "long", args.out_dir, args.hours,
-                                       seed + i * 10))
+                                       seed + i * 10, run_date, volume_for(run_date, count, i)))
         for i in range(args.shorts):
             results.append(produce_one(selection[i], "short", args.out_dir, args.hours,
-                                       seed + i * 10 + 1))
+                                       seed + i * 10 + 1, run_date,
+                                       volume_for(run_date, count, i)))
     elif args.daily:
         # LONGS_PER_DAY long-forms + SHORTS_PER_DAY Shorts, each a different music.
-        selection = T.daily_selection(count=T.DAILY_COUNT)
+        selection = T.daily_selection(run_date, count=T.DAILY_COUNT)
         longs = selection[:T.LONGS_PER_DAY]
         shorts = selection[T.LONGS_PER_DAY:T.LONGS_PER_DAY + T.SHORTS_PER_DAY]
         print("Daily batch: " + ", ".join(t["key"] for t in longs) + " (long) + "
               + ", ".join(t["key"] for t in shorts) + " (short)")
         for i, theme in enumerate(longs):
-            results.append(produce_one(theme, "long", args.out_dir, args.hours, seed + i))
+            results.append(produce_one(theme, "long", args.out_dir, args.hours, seed + i,
+                                       run_date, volume_for(run_date, T.DAILY_COUNT, i)))
         for i, theme in enumerate(shorts):
-            results.append(produce_one(theme, "short", args.out_dir, args.hours, seed + 100 + i))
+            results.append(produce_one(theme, "short", args.out_dir, args.hours, seed + 100 + i,
+                                       run_date, volume_for(run_date, T.DAILY_COUNT,
+                                                            T.LONGS_PER_DAY + i)))
     else:
-        theme = T.resolve_theme(args.theme)
+        theme = T.resolve_theme(args.theme, run_date)
         formats = ["short", "long"] if args.format == "both" else [args.format]
-        results = [produce_one(theme, f, args.out_dir, args.hours, seed + i)
+        results = [produce_one(theme, f, args.out_dir, args.hours, seed + i, run_date)
                    for i, f in enumerate(formats)]
 
     failed = [r for r in results if r["status"] != "queued"]

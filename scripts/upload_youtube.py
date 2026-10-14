@@ -15,13 +15,24 @@ Usage:
         --tags sleep,ambient,calm,black screen
 """
 import argparse
+import http.client
 import os
+import random
+import time
 
+import httplib2
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
 
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+
+# Transient failures worth retrying (Google's recommended set for resumable
+# uploads). Quota/auth errors (4xx) are NOT retried -- they won't fix themselves.
+RETRIABLE_STATUS = {500, 502, 503, 504}
+RETRIABLE_EXCEPTIONS = (OSError, httplib2.HttpLib2Error, http.client.HTTPException)
+MAX_RETRIES = 8
 
 
 def get_service(prefix="YT"):
@@ -86,11 +97,27 @@ def upload_video(youtube, video_path, title, description, tags, category_id="10"
     }
     media = MediaFileUpload(video_path, chunksize=-1, resumable=True, mimetype="video/mp4")
     request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
-    response = None
+    response, retries = None, 0
     while response is None:
-        status, response = request.next_chunk()
-        if status:
-            print(f"Upload progress: {int(status.progress() * 100)}%")
+        try:
+            status, response = request.next_chunk()
+            if status:
+                print(f"Upload progress: {int(status.progress() * 100)}%")
+            continue
+        except HttpError as e:
+            if e.resp.status not in RETRIABLE_STATUS:
+                raise
+            error = f"HTTP {e.resp.status}"
+        except RETRIABLE_EXCEPTIONS as e:
+            error = f"{type(e).__name__}: {e}"
+        retries += 1
+        if retries > MAX_RETRIES:
+            raise RuntimeError(f"upload failed after {MAX_RETRIES} retries ({error})")
+        # Exponential backoff with jitter; next_chunk() then resumes from the
+        # last byte YouTube confirmed instead of restarting the whole file.
+        wait = min(2 ** retries, 64) * random.uniform(0.5, 1.0)
+        print(f"  ! transient upload error ({error}); retry {retries}/{MAX_RETRIES} in {wait:.0f}s")
+        time.sleep(wait)
     return response["id"]
 
 

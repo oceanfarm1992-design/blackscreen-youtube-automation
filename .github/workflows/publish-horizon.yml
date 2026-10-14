@@ -75,21 +75,37 @@ jobs:
             "0 21 * * *")  echo "slot=1" >> "$GITHUB_OUTPUT" ;;
             *)             echo "slot=" >> "$GITHUB_OUTPUT" ;;
           esac
+          # GitHub often starts crons hours late -- sometimes past midnight UTC.
+          # Pin each scheduled run to the day it was SCHEDULED for, so a late
+          # run never repeats the next day's video or skips its own.
+          SCHED="${{ github.event.schedule }}"
+          if [ -n "$SCHED" ]; then
+            HOUR=$(echo "$SCHED" | awk '{print $2}')
+            if [ "$(date -u +%-H)" -lt "$HOUR" ]; then
+              echo "date=$(date -u -d yesterday +%F)" >> "$GITHUB_OUTPUT"
+            else
+              echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+            fi
+          fi
 
       - name: Produce video(s) + QC
         run: |
           SHORTS="${{ github.event.inputs.shorts || 0 }}"
           LONGS="${{ github.event.inputs.longs || 0 }}"
           SLOT="${{ steps.slot.outputs.slot }}"
+          RUN_DATE="${{ steps.slot.outputs.date }}"
+          # Manual/test runs draw from their own seed range, so they can never
+          # re-render a scheduled day's video.
+          MANUAL_SEED=$(( ${{ github.run_id }} % 1000000000 ))
           if [ "$SHORTS" != "0" ] || [ "$LONGS" != "0" ]; then
             echo "Manual test batch: $LONGS feature(s) + $SHORTS short(s)"
-            python horizon/produce.py --shorts "$SHORTS" --longs "$LONGS" --out-dir out
+            python horizon/produce.py --shorts "$SHORTS" --longs "$LONGS" --seed "$MANUAL_SEED" --out-dir out
           elif [ -n "$SLOT" ]; then
             echo "Scheduled slot $SLOT"
-            python horizon/produce.py --slot "$SLOT" --out-dir out
+            python horizon/produce.py --slot "$SLOT" --date "$RUN_DATE" --out-dir out
           else
             echo "Manual full daily batch"
-            python horizon/produce.py --daily --out-dir out
+            python horizon/produce.py --daily --seed "$MANUAL_SEED" --out-dir out
           fi
 
       - name: Show queue manifests

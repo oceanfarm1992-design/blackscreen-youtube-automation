@@ -45,6 +45,12 @@ def run(cmd):
     subprocess.run(cmd, check=True)
 
 
+def volume_for(d, count, pos):
+    """1-based count of how many times this rotation position's theme has come
+    up since ANCHOR, so a theme's repeat uploads get distinct titles (Vol. N)."""
+    return max(1, ((d - T.ANCHOR).days * count + pos) // len(T.THEMES) + 1)
+
+
 def ffprobe_duration(path):
     out = subprocess.run(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration",
@@ -80,7 +86,7 @@ def qc(fmt, video_path):
     return {"duration_sec": round(dur, 2), "resolution": res, "problems": problems}
 
 
-def produce_one(theme, fmt, out_dir, seed):
+def produce_one(theme, fmt, out_dir, seed, run_date, volume=None):
     key = theme["key"]
     duration = SHORT_SECONDS if fmt == "short" else T.FEATURE_SECONDS
     width, height = (1080, 1920) if fmt == "short" else (1920, 1080)
@@ -105,7 +111,8 @@ def produce_one(theme, fmt, out_dir, seed):
     run([sys.executable, mav, "--audio", audio, "--duration-seconds", str(duration),
          "--width", str(width), "--height", str(height), "--color", color,
          "--icon", icon, "--topic", topic, "--seed", str(seed), "--out", video])
-    run([sys.executable, mm, "--theme", key, "--format", fmt, "--out", meta])
+    vol = ["--volume", str(volume)] if volume else []
+    run([sys.executable, mm, "--theme", key, "--format", fmt, "--out", meta] + vol)
 
     if fmt == "long":
         gen_thumb = os.path.join(THUMBS_GEN, f"{key}.png")
@@ -117,7 +124,7 @@ def produce_one(theme, fmt, out_dir, seed):
     report = qc(fmt, video)
 
     manifest = {
-        "date": date.today().isoformat(),
+        "date": run_date.isoformat(),
         "theme": key,
         "theme_name": theme["name"],
         "format": fmt,
@@ -150,6 +157,10 @@ def main():
     p.add_argument("--longs", type=int, default=0)
     p.add_argument("--slot", type=int, default=None)
     p.add_argument("--seed", type=int, default=None)
+    p.add_argument("--date", default=None,
+                   help="YYYY-MM-DD this run is FOR (default: today). The scheduler "
+                        "passes the day the cron was scheduled for, because GitHub "
+                        "often starts crons hours late -- sometimes past midnight.")
     p.add_argument("--out-dir", default="out")
     args = p.parse_args()
 
@@ -157,39 +168,50 @@ def main():
             and args.slot is None):
         p.error("give --daily, --format, --slot, or --shorts/--longs")
 
-    seed = args.seed if args.seed is not None else int(date.today().strftime("%Y%m%d"))
+    run_date = date.fromisoformat(args.date) if args.date else date.today()
+    # Each day owns a block of 1000 seeds (slot/batch offsets stay inside it), so
+    # one day's Short (date+1) can never reuse the next day's feature seed.
+    seed = args.seed if args.seed is not None else int(run_date.strftime("%Y%m%d")) * 1000
     os.makedirs(args.out_dir, exist_ok=True)
 
     results = []
     if args.slot is not None:
-        selection = T.daily_selection(count=T.DAILY_COUNT)
-        theme = selection[args.slot % len(selection)]
+        selection = T.daily_selection(run_date, count=T.DAILY_COUNT)
+        pos = args.slot % len(selection)
+        theme = selection[pos]
         fmt = "long" if args.slot < T.LONGS_PER_DAY else "short"
-        print(f"Slot {args.slot}: {theme['key']} {fmt}")
-        results.append(produce_one(theme, fmt, args.out_dir, seed + args.slot))
+        print(f"Slot {args.slot} for {run_date}: {theme['key']} {fmt}")
+        results.append(produce_one(theme, fmt, args.out_dir, seed + args.slot, run_date,
+                                   volume_for(run_date, T.DAILY_COUNT, pos)))
     elif args.shorts or args.longs:
         need = max(args.shorts, args.longs, 1)
-        selection = T.daily_selection(count=max(need, T.DAILY_COUNT))
+        count = max(need, T.DAILY_COUNT)
+        selection = T.daily_selection(run_date, count=count)
         print(f"Test batch: {args.longs} feature(s) + {args.shorts} short(s) from: "
               + ", ".join(t["key"] for t in selection[:need]))
         for i in range(args.longs):
-            results.append(produce_one(selection[i], "long", args.out_dir, seed + i * 10))
+            results.append(produce_one(selection[i], "long", args.out_dir, seed + i * 10,
+                                       run_date, volume_for(run_date, count, i)))
         for i in range(args.shorts):
-            results.append(produce_one(selection[i], "short", args.out_dir, seed + i * 10 + 1))
+            results.append(produce_one(selection[i], "short", args.out_dir, seed + i * 10 + 1,
+                                       run_date, volume_for(run_date, count, i)))
     elif args.daily:
-        selection = T.daily_selection(count=T.DAILY_COUNT)
+        selection = T.daily_selection(run_date, count=T.DAILY_COUNT)
         longs = selection[:T.LONGS_PER_DAY]
         shorts = selection[T.LONGS_PER_DAY:T.LONGS_PER_DAY + T.SHORTS_PER_DAY]
         print("Daily batch: " + ", ".join(t["key"] for t in longs) + " (feature) + "
               + ", ".join(t["key"] for t in shorts) + " (short)")
         for i, theme in enumerate(longs):
-            results.append(produce_one(theme, "long", args.out_dir, seed + i))
+            results.append(produce_one(theme, "long", args.out_dir, seed + i, run_date,
+                                       volume_for(run_date, T.DAILY_COUNT, i)))
         for i, theme in enumerate(shorts):
-            results.append(produce_one(theme, "short", args.out_dir, seed + 100 + i))
+            results.append(produce_one(theme, "short", args.out_dir, seed + 100 + i, run_date,
+                                       volume_for(run_date, T.DAILY_COUNT,
+                                                  T.LONGS_PER_DAY + i)))
     else:
-        theme = T.resolve_theme(args.theme)
+        theme = T.resolve_theme(args.theme, run_date)
         formats = ["short", "long"] if args.format == "both" else [args.format]
-        results = [produce_one(theme, f, args.out_dir, seed + i)
+        results = [produce_one(theme, f, args.out_dir, seed + i, run_date)
                    for i, f in enumerate(formats)]
 
     failed = [r for r in results if r["status"] != "queued"]
