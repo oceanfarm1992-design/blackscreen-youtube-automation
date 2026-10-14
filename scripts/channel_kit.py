@@ -485,15 +485,16 @@ def _pill(draw, x, y, label, fill, size=40):
     draw.text((x + 30, y + int(size * 0.25)), label, font=font, fill=(255, 255, 255))
 
 
-def grade_and_badge(img, volume, fill, rng):
+def grade_and_badge(img, volume, fill, rng, length_label=None):
     """For finished art we must not redraw: a slight per-upload color grade
     (so the file differs) plus a 'VOL. N' badge in the bottom-left corner."""
     from PIL import ImageDraw, ImageEnhance
     img = ImageEnhance.Brightness(img).enhance(rng.uniform(0.95, 1.05))
     img = ImageEnhance.Contrast(img).enhance(rng.uniform(0.96, 1.06))
     img = ImageEnhance.Color(img).enhance(rng.uniform(0.92, 1.08))
-    if volume:
-        _pill(ImageDraw.Draw(img), 40, THUMB_H - 40 - 62, f"VOL. {volume}", fill)
+    parts = [x for x in (length_label, f"VOL. {volume}" if volume else None) if x]
+    if parts:
+        _pill(ImageDraw.Draw(img), 40, THUMB_H - 40 - 62, " · ".join(parts), fill)
     return img
 
 
@@ -509,7 +510,7 @@ def render_thumbnail(T, style, key, out_path, seed=None, volume=None, length_lab
         if not os.path.exists(src):
             src = os.path.join(ch.brand, "thumbnail_1280x720.png")
         img = Image.open(src).convert("RGB").resize((THUMB_W, THUMB_H))
-        img = grade_and_badge(img, volume, style["pill_fill"], rng) if jitter else img
+        img = grade_and_badge(img, volume, style["pill_fill"], rng, length_label) if jitter else img
     else:
         if style["background"] == "noise":
             base = _noise_background(T, key, rng)
