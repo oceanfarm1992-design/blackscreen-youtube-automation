@@ -156,6 +156,44 @@ def test_description_names_the_volume(folder):
     assert f"{T.THEMES[0]['name']} (Vol. 5)" in meta["description"].splitlines()[0]
 
 
+def test_verified_channels_rotate_3_8_10_hours():
+    for folder in ANIMATED:
+        T = THEMES[folder]
+        days = [K.long_hours_for(T, T.ANCHOR + timedelta(days=i)) for i in range(6)]
+        if folder in ("aether", "hearth"):
+            assert days == [3, 8, 10, 3, 8, 10]
+        else:
+            assert days == [None] * 6, f"{folder} isn't phone-verified: must stay under 15 min"
+
+
+@pytest.mark.parametrize("folder", ["aether", "hearth"])
+def test_hours_long_metadata(folder):
+    T = THEMES[folder]
+    for theme in T.THEMES:
+        meta = K.build_metadata(T, theme, "long", 4, hours=10)
+        assert "10 Hours" in meta["title"] and "14 Minute" not in meta["title"]
+        assert len(meta["title"]) <= 100 and "Vol. 4" in meta["title"]
+        assert meta["description"].startswith(f"10 Hours of {theme['name']} (Vol. 4)")
+        assert "never a static loop" not in meta["description"]  # the hour repeats
+
+
+@pytest.mark.parametrize("topic", sorted(TOPIC_PROFILES))
+def test_loop_segment_path_is_seamless(topic):
+    from make_animated_video import _pan_path
+    n = 18 * 60
+    dx, dy = _pan_path(n, 60, 200, 120, np.random.default_rng(4), TOPIC_PROFILES[topic], periodic=True)
+    step = max(np.abs(np.diff(dx)).max(), np.abs(np.diff(dy)).max())
+    seam = max(abs(int(dx[0]) - int(dx[-1])), abs(int(dy[0]) - int(dy[-1])))
+    assert seam <= step + 1, f"{topic}: loop seam jumps {seam}px (normal step {step}px)"
+
+
+def test_loop_flicker_period_divides_the_segment():
+    from make_animated_video import loop_period
+    for period in (7.0, 55.0, 90.0, 240.0, 300.0, 420.0):
+        p = loop_period(period, 3600)
+        assert abs(3600 / p - round(3600 / p)) < 1e-9 and abs(p - period) / period < 0.1
+
+
 def test_backfill_parses_durations_and_titles():
     B = load("scripts", "backfill_thumbnails")
     assert B.iso_seconds("PT14M30S") == 870

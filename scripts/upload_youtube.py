@@ -33,6 +33,7 @@ SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 RETRIABLE_STATUS = {500, 502, 503, 504}
 RETRIABLE_EXCEPTIONS = (OSError, httplib2.HttpLib2Error, http.client.HTTPException)
 MAX_RETRIES = 8
+UPLOAD_CHUNK_BYTES = 64 * 1024 * 1024
 
 
 def get_service(prefix="YT"):
@@ -95,7 +96,10 @@ def upload_video(youtube, video_path, title, description, tags, category_id="10"
         },
         "status": {"privacyStatus": privacy},
     }
-    media = MediaFileUpload(video_path, chunksize=-1, resumable=True, mimetype="video/mp4")
+    # 64 MB chunks: hours-long features are multi-GB, and a transient error
+    # then retries one chunk instead of the whole file.
+    media = MediaFileUpload(video_path, chunksize=UPLOAD_CHUNK_BYTES, resumable=True,
+                            mimetype="video/mp4")
     request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
     response, retries = None, 0
     while response is None:

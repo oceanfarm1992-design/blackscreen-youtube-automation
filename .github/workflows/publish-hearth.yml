@@ -35,6 +35,9 @@ on:
       shorts:
         description: "Test only: number of Shorts (0 = full daily batch)"
         default: "0"
+      hours:
+        description: "Test only: feature length in hours (blank = today's 3/8/10h rotation)"
+        default: ""
       upload:
         description: "Test only: 'false' renders + QCs without uploading (see the run's artifacts)"
         default: "true"
@@ -52,7 +55,8 @@ concurrency:
 jobs:
   produce:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    # Hours-long features render a fresh 1h animation (~70 min) before looping it.
+    timeout-minutes: 330
     env:
       HEARTH_YT_CLIENT_ID: ${{ secrets.HEARTH_YT_CLIENT_ID }}
       HEARTH_YT_CLIENT_SECRET: ${{ secrets.HEARTH_YT_CLIENT_SECRET }}
@@ -100,16 +104,17 @@ jobs:
           SLOT: ${{ steps.slot.outputs.slot }}
           RUN_DATE: ${{ steps.slot.outputs.date }}
           RUN_ID: ${{ github.run_id }}
+          HOURS: ${{ github.event.inputs.hours }}
         run: |
-          for n in "$SHORTS" "$LONGS"; do
-            case "$n" in *[!0-9]*) echo "shorts/longs must be whole numbers"; exit 1 ;; esac
+          for n in "$SHORTS" "$LONGS" "$HOURS"; do
+            case "$n" in *[!0-9]*) echo "shorts/longs/hours must be whole numbers"; exit 1 ;; esac
           done
           # Manual/test runs draw from their own seed range, so they can never
           # re-render a scheduled day's video.
           MANUAL_SEED=$(( RUN_ID % 1000000000 ))
           if [ "$SHORTS" != "0" ] || [ "$LONGS" != "0" ]; then
             echo "Manual test batch: $LONGS feature(s) + $SHORTS short(s)"
-            python hearth/produce.py --shorts "$SHORTS" --longs "$LONGS" --seed "$MANUAL_SEED" --out-dir out
+            python hearth/produce.py --shorts "$SHORTS" --longs "$LONGS" --seed "$MANUAL_SEED" ${HOURS:+--hours "$HOURS"} --out-dir out
           elif [ -n "$SLOT" ]; then
             echo "Scheduled slot $SLOT"
             python hearth/produce.py --slot "$SLOT" --date "$RUN_DATE" --out-dir out

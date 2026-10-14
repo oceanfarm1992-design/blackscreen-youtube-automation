@@ -42,6 +42,7 @@ Usage:
         --topic fire --seed 20260912 --out feature.mp4
 """
 import argparse
+import os
 import subprocess
 
 import numpy as np
@@ -131,28 +132,36 @@ def _noise_field(w, h, rng, tilt=1.6, blur_frac=0.03):
     return np.asarray(img).astype(np.float32) / 255.0
 
 
-def _pan_path(n_frames, duration_sec, max_dx, max_dy, rng, profile):
+def _pan_path(n_frames, duration_sec, max_dx, max_dy, rng, profile, periodic=False):
     """Smooth, slow lissajous-style drift across the noise field, so the
     camera never repeats the same path twice (random phase per render).
     `profile` (a TOPIC_PROFILES entry) scales the amplitude/frequency of
     that drift and can layer a faster jitter and a one-way drift bias on
     top, so e.g. a fire topic flickers quickly in place while a void topic
-    barely moves at all."""
-    t = np.linspace(0, 2 * np.pi, n_frames)
+    barely moves at all.
+
+    periodic=True makes the path end exactly where it began (whole-number
+    frequencies, no one-way drift, no duplicated end frame), so the clip can
+    be looped back-to-back without a visible jump -- used for long videos."""
+    t = np.linspace(0, 2 * np.pi, n_frames, endpoint=not periodic)
     px, py = rng.uniform(0, 2 * np.pi, size=2)
     fx = rng.uniform(*profile["fx_range"])
     fy = rng.uniform(*profile["fy_range"])
+    if periodic:
+        fx, fy = max(1, round(fx)), max(1, round(fy))
     amp_x = max_dx * profile["amp_x"]
     amp_y = max_dy * profile["amp_y"]
     dx = (0.5 + 0.5 * np.sin(t * fx + px)) * amp_x
     dy = (0.5 + 0.5 * np.sin(t * fy + py)) * amp_y
 
-    if profile["drift_y"]:
+    if profile["drift_y"] and not periodic:
         dy = dy + profile["drift_y"] * max_dy * (t / (2 * np.pi))
 
     if profile["jitter"]:
         jlo, jhi = profile["jitter_freq"]
         jfx, jfy = rng.uniform(jlo, jhi, size=2)
+        if periodic:
+            jfx, jfy = round(jfx), round(jfy)
         jpx, jpy = rng.uniform(0, 2 * np.pi, size=2)
         dx = dx + profile["jitter"] * max_dx * np.sin(t * jfx + jpx)
         dy = dy + profile["jitter"] * max_dy * np.sin(t * jfy + jpy)
@@ -162,7 +171,7 @@ def _pan_path(n_frames, duration_sec, max_dx, max_dy, rng, profile):
     return dx.astype(int), dy.astype(int)
 
 
-def render_frames(out_pipe, duration_sec, iw, ih, color, seed, topic="neutral"):
+def render_frames(out_pipe, duration_sec, iw, ih, color, seed, topic="neutral", periodic=False):
     profile = TOPIC_PROFILES.get(topic, TOPIC_PROFILES["neutral"])
     rng = np.random.default_rng(seed)
     max_dx = _even(iw * PAN_MARGIN)
@@ -171,7 +180,7 @@ def render_frames(out_pipe, duration_sec, iw, ih, color, seed, topic="neutral"):
                           tilt=profile["tilt"], blur_frac=profile["blur_frac"])
 
     n_frames = int(round(duration_sec * FPS))
-    dxs, dys = _pan_path(n_frames, duration_sec, max_dx, max_dy, rng, profile)
+    dxs, dys = _pan_path(n_frames, duration_sec, max_dx, max_dy, rng, profile, periodic)
     gains = np.array(_channel_gain(color), dtype=np.float32)
 
     for i in range(n_frames):
@@ -180,33 +189,70 @@ def render_frames(out_pipe, duration_sec, iw, ih, color, seed, topic="neutral"):
         out_pipe.write(np.clip(rgb, 0, 255).astype(np.uint8).tobytes())
 
 
+def loop_period(period, segment_sec):
+    """Nearest flicker period that fits a whole number of times into the
+    segment, so the brightness pulse is continuous across the loop point."""
+    return segment_sec / max(1, round(segment_sec / period))
+
+
 def build_ffmpeg_command(audio_path, duration_sec, width, height, out_path, iw, ih, icon,
-                          topic="neutral"):
+                          topic="neutral", periodic=False):
+    """Encode the piped frames. audio_path=None renders a silent, loopable
+    video-only segment (see main's --segment-seconds)."""
     profile = TOPIC_PROFILES.get(topic, TOPIC_PROFILES["neutral"])
+    period = profile["flicker_period"]
+    if periodic:
+        period = loop_period(period, duration_sec)
     icon_w = _even(width * 0.09)
     filter_complex = (
         f"[0:v]eq=saturation={profile['saturation']}:contrast={profile['contrast']}:"
-        f"brightness='{profile['flicker_amp']}*sin(2*PI*t/{profile['flicker_period']})':eval=frame,"
+        f"brightness='{profile['flicker_amp']}*sin(2*PI*t/{period:g})':eval=frame,"
         f"vignette={profile['vignette']},scale={width}:{height}:flags=lanczos,format=rgba[bg];"
         f"[1:v]scale={icon_w}:-1,colorchannelmixer=aa=0.32[icon];"
         f"[bg][icon]overlay=W-w-{_even(width*0.03)}:H-h-{_even(height*0.03)}:format=auto,"
         f"format=yuv420p[vout]"
     )
-    return [
-        "ffmpeg", "-y",
-        "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{iw}x{ih}", "-r", str(FPS),
-        "-i", "pipe:0",
-        "-i", icon,
-        "-i", audio_path,
-        "-filter_complex", filter_complex,
-        "-map", "[vout]", "-map", "2:a",
-        "-t", str(duration_sec),
-        "-r", str(FPS),
-        "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "192k",
-        "-shortest",
-        out_path,
-    ]
+    cmd = ["ffmpeg", "-y",
+           "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{iw}x{ih}", "-r", str(FPS),
+           "-i", "pipe:0",
+           "-i", icon]
+    if audio_path:
+        cmd += ["-i", audio_path]
+    cmd += ["-filter_complex", filter_complex, "-map", "[vout]"]
+    if audio_path:
+        cmd += ["-map", "2:a", "-t", str(duration_sec), "-r", str(FPS),
+                "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+                "-c:a", "aac", "-b:a", "192k", "-shortest", out_path]
+    else:
+        cmd += ["-an", "-t", str(duration_sec), "-r", str(FPS),
+                "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", out_path]
+    return cmd
+
+
+def loop_mux_command(segment_path, audio_path, duration_sec, out_path):
+    """Repeat the seamless video segment and the (separately seamless) audio
+    loop out to the full length -- stream copy, so a 10h video takes minutes."""
+    return ["ffmpeg", "-y",
+            "-stream_loop", "-1", "-i", segment_path,
+            "-stream_loop", "-1", "-i", audio_path,
+            "-map", "0:v", "-map", "1:a",
+            "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+            "-t", str(duration_sec), "-movflags", "+faststart", out_path]
+
+
+def render(audio, duration, width, height, color, icon, topic, seed, out, periodic=False):
+    iw = _even(width * INTERNAL_SCALE)
+    ih = _even(height * INTERNAL_SCALE)
+    cmd = build_ffmpeg_command(audio, duration, width, height, out, iw, ih, icon, topic, periodic)
+    print("Running:", " ".join(cmd))
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+    try:
+        render_frames(proc.stdin, duration, iw, ih, color, seed, topic, periodic)
+    finally:
+        proc.stdin.close()
+    ret = proc.wait()
+    if ret != 0:
+        raise subprocess.CalledProcessError(ret, cmd)
 
 
 def main():
@@ -220,24 +266,26 @@ def main():
     p.add_argument("--topic", default="neutral", choices=sorted(TOPIC_PROFILES),
                    help="motion/flicker profile matching the theme's subject "
                         "(fire/water/wind/void/stone/neutral)")
+    p.add_argument("--segment-seconds", type=float, default=0,
+                   help="long videos: render only this many seconds of seamlessly "
+                        "loopable animation, then loop it (and --audio, itself a "
+                        "seamless loop) out to --duration-seconds. 0 = animate it all.")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--out", default="animated.mp4")
     args = p.parse_args()
 
-    iw = _even(args.width * INTERNAL_SCALE)
-    ih = _even(args.height * INTERNAL_SCALE)
-
-    cmd = build_ffmpeg_command(args.audio, args.duration_seconds, args.width,
-                                args.height, args.out, iw, ih, args.icon, args.topic)
-    print("Running:", " ".join(cmd))
-    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
-    try:
-        render_frames(proc.stdin, args.duration_seconds, iw, ih, args.color, args.seed, args.topic)
-    finally:
-        proc.stdin.close()
-    ret = proc.wait()
-    if ret != 0:
-        raise subprocess.CalledProcessError(ret, cmd)
+    seg = args.segment_seconds
+    if 0 < seg < args.duration_seconds:
+        segment = args.out + ".segment.mp4"
+        render(None, seg, args.width, args.height, args.color, args.icon, args.topic,
+               args.seed, segment, periodic=True)
+        cmd = loop_mux_command(segment, args.audio, args.duration_seconds, args.out)
+        print("Running:", " ".join(cmd))
+        subprocess.run(cmd, check=True)
+        os.remove(segment)
+    else:
+        render(args.audio, args.duration_seconds, args.width, args.height, args.color,
+               args.icon, args.topic, args.seed, args.out)
     print(f"Wrote {args.out} ({args.duration_seconds:.0f}s, {args.width}x{args.height})")
 
 

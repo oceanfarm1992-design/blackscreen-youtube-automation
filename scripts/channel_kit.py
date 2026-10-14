@@ -28,6 +28,14 @@ ROOT = os.path.dirname(SCRIPTS)
 
 SHORT_SECONDS = 59
 CATEGORY_MUSIC = "10"
+
+# Hours-long features, for channels whose themes.py sets LONG_HOURS_CYCLE
+# (only phone-verified channels: unverified ones can't upload over 15 min).
+# A fresh, seamlessly loopable LONG_SEGMENT_SECONDS of animation and a
+# LONG_AUDIO_LOOP_SECONDS seamless audio loop are rendered per video, then
+# looped out to the full length.
+LONG_SEGMENT_SECONDS = 3600
+LONG_AUDIO_LOOP_SECONDS = 900
 # YouTube counts the combined length of all tags against a 500-char cap (and
 # adds quotes around multi-word tags). Pack to a safe 480.
 TAG_CHAR_LIMIT = 480
@@ -106,19 +114,26 @@ def fit_title(title, limit=100):
     return cut.rstrip(" |-&,") + tail
 
 
-def build_metadata(T, theme, fmt, volume=None):
+def build_metadata(T, theme, fmt, volume=None, hours=None):
     title = theme["short_title"] if fmt == "short" else theme["long_title"]
+    if fmt == "long" and hours:
+        title = title.replace("14 Minute", f"{hours} Hours")
     title = fit_title(with_volume(title, volume))
 
     name = f"{theme['name']} (Vol. {volume})" if volume else theme["name"]
-    lead = f"{T.FEATURE_SECONDS // 60} Minutes of {name}" if fmt == "long" else name
+    if fmt == "short":
+        lead, visual_line = name, ""
+    elif hours:
+        lead = f"{hours} Hours of {name}"
+        # The hour of animation repeats, so don't claim "never a loop" here.
+        visual_line = " Paired with a slow, generative ambient animation, rendered fresh for this video."
+    else:
+        lead = f"{T.FEATURE_SECONDS // 60} Minutes of {name}"
+        visual_line = (" Paired with a slow, generative ambient animation — unique every "
+                       "time, never a static loop.")
     hashtags = " ".join("#" + t.replace(" ", "") for t in theme["tags"][:3])
     if fmt == "short":
         hashtags += " #shorts"
-    visual_line = (
-        " Paired with a slow, generative ambient animation — unique every "
-        "time, never a static loop." if fmt == "long" else ""
-    )
     description = (
         f"{lead}.{visual_line}\n\n"
         f"{theme['description']}\n\n"
@@ -145,10 +160,11 @@ def metadata_main(T):
     p.add_argument("--format", required=True, choices=["short", "long"])
     p.add_argument("--volume", type=int, default=None,
                    help="repeat number of this theme; adds 'Vol. N' to the title")
+    p.add_argument("--hours", type=int, default=None, help="hours-long feature length")
     p.add_argument("--out", default="metadata.json")
     args = p.parse_args()
 
-    meta = build_metadata(T, T.resolve_theme(args.theme), args.format, args.volume)
+    meta = build_metadata(T, T.resolve_theme(args.theme), args.format, args.volume, args.hours)
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
     print(f"Wrote {args.out}")
@@ -189,7 +205,7 @@ def ffprobe_resolution(path):
     return out.stdout.strip()
 
 
-def qc(T, fmt, video_path):
+def qc(T, fmt, video_path, target_sec=None):
     dur = ffprobe_duration(video_path)
     res = ffprobe_resolution(video_path)
     problems = []
@@ -199,17 +215,30 @@ def qc(T, fmt, video_path):
         if res != "1080x1920":
             problems.append(f"Short resolution {res} is not 1080x1920 (vertical)")
     else:
-        if abs(dur - T.FEATURE_SECONDS) > 5.0:
-            problems.append(f"Feature duration {dur:.1f}s is not ~{T.FEATURE_SECONDS}s")
+        target = target_sec or T.FEATURE_SECONDS
+        if abs(dur - target) > max(5.0, 0.003 * target):
+            problems.append(f"Feature duration {dur:.1f}s is not ~{target}s")
         if res != "1920x1080":
             problems.append(f"Feature resolution {res} is not 1920x1080")
     return {"duration_sec": round(dur, 2), "resolution": res, "problems": problems}
 
 
-def produce_one(ch, theme, fmt, out_dir, seed, run_date, volume=None):
+def long_hours_for(T, d):
+    """Hours for the feature on day d if this channel makes hours-long
+    features (LONG_HOURS_CYCLE, e.g. (3, 8, 10) -> 3h, 8h, 10h, 3h, ...), else
+    None for the standard 14:30 feature."""
+    cycle = getattr(T, "LONG_HOURS_CYCLE", ())
+    return cycle[(d - T.ANCHOR).days % len(cycle)] if cycle else None
+
+
+def produce_one(ch, theme, fmt, out_dir, seed, run_date, volume=None, hours=None):
     T = ch.T
     key = theme["key"]
-    duration = SHORT_SECONDS if fmt == "short" else T.FEATURE_SECONDS
+    hours = hours if fmt == "long" else None
+    if fmt == "short":
+        duration = SHORT_SECONDS
+    else:
+        duration = hours * 3600 if hours else T.FEATURE_SECONDS
     width, height = (1080, 1920) if fmt == "short" else (1920, 1080)
 
     stem = os.path.join(out_dir, f"{key}_{fmt}")
@@ -218,26 +247,33 @@ def produce_one(ch, theme, fmt, out_dir, seed, run_date, volume=None):
     thumb = f"{stem}_thumb.png"
     meta = f"{stem}_meta.json"
 
+    # Hours-long: a seamless audio loop and a seamless hour of animation,
+    # both fresh for this video, looped out to the full length.
+    length = (["--loop-seconds", str(LONG_AUDIO_LOOP_SECONDS)] if hours
+              else ["--seconds", str(duration)])
+    segment = ["--segment-seconds", str(LONG_SEGMENT_SECONDS)] if hours else []
     run([sys.executable, os.path.join(SCRIPTS, "generate_theme_audio.py"),
-         "--theme", theme["synth"], "--seconds", str(duration),
-         "--seed", str(seed), "--out", audio] + T.synth_args(theme))
+         "--theme", theme["synth"]] + length +
+        ["--seed", str(seed), "--out", audio] + T.synth_args(theme))
     run([sys.executable, os.path.join(SCRIPTS, "make_animated_video.py"),
          "--audio", audio, "--duration-seconds", str(duration),
          "--width", str(width), "--height", str(height),
          "--color", T.ACCENT_COLORS[key], "--icon", os.path.join(ch.brand, "icon.png"),
-         "--topic", T.topic_for(key), "--seed", str(seed), "--out", video])
+         "--topic", T.topic_for(key)] + segment + ["--seed", str(seed), "--out", video])
     vol = ["--volume", str(volume)] if volume else []
+    hrs = ["--hours", str(hours)] if hours else []
     run([sys.executable, ch.script("make_metadata.py"),
-         "--theme", key, "--format", fmt, "--out", meta] + vol)
+         "--theme", key, "--format", fmt, "--out", meta] + vol + hrs)
 
     # Features get their own thumbnail, rendered from this upload's seed. Shorts
     # use an auto-selected video frame -- skip the custom thumbnail to save quota.
     if fmt == "long":
+        label = f"{hours} HOURS" if hours else None
         thumbnail_rel = os.path.relpath(
-            make_feature_thumbnail(ch, key, thumb, seed, volume), ROOT)
+            make_feature_thumbnail(ch, key, thumb, seed, volume, label), ROOT)
     else:
         thumbnail_rel = None
-    report = qc(T, fmt, video)
+    report = qc(T, fmt, video, duration)
 
     manifest = {
         "date": run_date.isoformat(),
@@ -285,21 +321,28 @@ def produce_main(T):
                    help="YYYY-MM-DD this run is FOR (default: today). The scheduler "
                         "passes the day the cron was scheduled for, because GitHub "
                         "often starts crons hours late -- sometimes past midnight.")
+    p.add_argument("--hours", type=int, default=None,
+                   help="override the feature length in hours (channels with "
+                        "LONG_HOURS_CYCLE only -- i.e. phone-verified channels)")
     p.add_argument("--out-dir", default="out")
     args = p.parse_args()
 
     if (not args.daily and not args.format and not (args.shorts or args.longs)
             and args.slot is None):
         p.error("give --daily, --format, --slot, or --shorts/--longs")
+    if args.hours and not getattr(T, "LONG_HOURS_CYCLE", ()):
+        p.error(f"{T.BRAND_NAME} has no LONG_HOURS_CYCLE: YouTube rejects uploads over "
+                "15 minutes until the channel is phone-verified")
 
     run_date = date.fromisoformat(args.date) if args.date else date.today()
     # Each day owns a block of 1000 seeds (slot/batch offsets stay inside it), so
     # one day's Short (date+1) can never reuse the next day's feature seed.
     seed = args.seed if args.seed is not None else int(run_date.strftime("%Y%m%d")) * 1000
+    hours = args.hours or long_hours_for(T, run_date)
     os.makedirs(args.out_dir, exist_ok=True)
 
     def one(theme, fmt, s, volume=None):
-        return produce_one(ch, theme, fmt, args.out_dir, s, run_date, volume)
+        return produce_one(ch, theme, fmt, args.out_dir, s, run_date, volume, hours)
 
     results = []
     if args.slot is not None:
@@ -454,7 +497,7 @@ def grade_and_badge(img, volume, fill, rng):
     return img
 
 
-def render_thumbnail(T, style, key, out_path, seed=None, volume=None):
+def render_thumbnail(T, style, key, out_path, seed=None, volume=None, length_label=None):
     import numpy as np
     from PIL import Image, ImageDraw
     ch = Channel(T)
@@ -485,8 +528,8 @@ def render_thumbnail(T, style, key, out_path, seed=None, volume=None):
             draw.text((THUMB_MARGIN_X, y), text, font=font, fill=style["text_fill"],
                       stroke_width=6, stroke_fill=(0, 0, 0))
             y += draw.textbbox((0, 0), text, font=font)[3] + 14
-        minutes = T.FEATURE_SECONDS // 60
-        label = f"{minutes} MIN · VOL. {volume}" if volume else f"{minutes} MIN"
+        length = length_label or f"{T.FEATURE_SECONDS // 60} MIN"
+        label = f"{length} · VOL. {volume}" if volume else length
         _pill(draw, THUMB_MARGIN_X, y + 12, label, style["pill_fill"])
 
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
@@ -504,13 +547,14 @@ def thumbnails_main(T, style):
     p.add_argument("--out", default=None, help="with --theme: output PNG path")
     p.add_argument("--seed", type=int, default=None, help="per-upload variation seed")
     p.add_argument("--volume", type=int, default=None, help="adds 'VOL. N' to the badge")
+    p.add_argument("--length-label", default=None, help="badge length text, e.g. '10 HOURS'")
     p.add_argument("--all", action="store_true", help="regenerate every committed fallback")
     p.add_argument("--themes", default=None, help="comma-separated keys to regenerate")
     args = p.parse_args()
 
     if args.theme:
         out = args.out or os.path.join(ch.thumbs_gen, f"{args.theme}.png")
-        render_thumbnail(T, style, args.theme, out, args.seed, args.volume)
+        render_thumbnail(T, style, args.theme, out, args.seed, args.volume, args.length_label)
         print(f"Wrote {out}")
         return
 
@@ -525,7 +569,7 @@ def thumbnails_main(T, style):
     print(f"Done: {len(keys)} thumbnail(s).")
 
 
-def make_feature_thumbnail(ch, key, out_path, seed, volume):
+def make_feature_thumbnail(ch, key, out_path, seed, volume, length_label=None):
     """Render this upload's own thumbnail; if that fails for any reason (fonts,
     missing art), fall back to the committed per-theme one so the upload is
     never blocked over an optional extra."""
@@ -533,6 +577,8 @@ def make_feature_thumbnail(ch, key, out_path, seed, volume):
            "--out", out_path, "--seed", str(seed)]
     if volume:
         cmd += ["--volume", str(volume)]
+    if length_label:
+        cmd += ["--length-label", length_label]
     print("+", " ".join(cmd))
     if subprocess.run(cmd).returncode == 0 and os.path.exists(out_path):
         return out_path

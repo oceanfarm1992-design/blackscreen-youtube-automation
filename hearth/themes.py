@@ -15,6 +15,12 @@ from datetime import date
 ANCHOR = date(2026, 10, 4)
 
 FEATURE_SECONDS = 870  # 14:30
+
+# This channel is phone-verified, so its daily feature can run for hours:
+# the length rotates by day, 3h -> 8h -> 10h -> 3h ... (scripts/channel_kit.py
+# renders a fresh, seamless hour of animation per video and loops it).
+# Remove this line to go back to the 14:30 feature.
+LONG_HOURS_CYCLE = (3, 8, 10)
 SHORT_SECONDS = 59
 
 LONGS_PER_DAY = 1
