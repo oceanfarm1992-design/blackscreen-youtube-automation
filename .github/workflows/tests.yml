@@ -1,0 +1,34 @@
+name: tests
+
+# Runs the pipeline guards (tests/test_pipeline.py) on every push and PR:
+# every upload unique, titles within YouTube limits, every theme configured,
+# crons mapped to slots, upload retries, per-upload thumbnails. Fast (~1 min),
+# no secrets, renders nothing to YouTube.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt pytest
+          sudo apt-get update && sudo apt-get install -y fonts-dejavu-core fonts-dejavu-extra
+
+      - name: Run tests
+        run: python -m pytest -q tests

@@ -39,6 +39,7 @@ FRAME_16x9 = os.path.join(BRAND, "brand_16x9.png")
 FRAME_9x16 = os.path.join(BRAND, "brand_9x16.png")
 
 SHORT_SECONDS = 59
+PILL_FILL = (232, 74, 95)  # channel red/pink, matches the thumbnail duration pill
 LONG_LOOP_SECONDS = 600  # 10 min seamless loop, stream-looped to full length by ffmpeg
 CLIPS_DIR = os.path.join(ROOT, "assets", "clips")  # AI-generated clip library
 
@@ -46,6 +47,26 @@ CLIPS_DIR = os.path.join(ROOT, "assets", "clips")  # AI-generated clip library
 def run(cmd):
     print("+", " ".join(str(c) for c in cmd))
     subprocess.run(cmd, check=True)
+
+
+def feature_thumbnail(key, out_path, seed, volume):
+    """The theme's scenic thumbnail with a per-upload color grade and a
+    'VOL. N' badge, so no two uploads share a thumbnail. Falls back to the
+    committed image if anything goes wrong -- never blocks an upload."""
+    gen = os.path.join(THUMBS_GEN, f"{key}.png")
+    src = gen if os.path.exists(gen) else THUMBNAIL
+    try:
+        import numpy as np
+        from PIL import Image
+
+        import channel_kit as K
+        img = Image.open(src).convert("RGB").resize((K.THUMB_W, K.THUMB_H))
+        img = K.grade_and_badge(img, volume, PILL_FILL, np.random.default_rng(seed))
+        img.save(out_path, "PNG", optimize=True)
+    except Exception as e:
+        print(f"  ! per-upload thumbnail failed ({e}); using the committed one")
+        shutil.copyfile(src, out_path)
+    return out_path
 
 
 def volume_for(d, count, pos):
@@ -141,14 +162,11 @@ def produce_one(theme, fmt, out_dir, hours, seed, run_date, volume=None):
         run([sys.executable, mm, "--theme", key, "--format", "long", "--hours", str(hours),
              "--out", meta] + vol)
 
-    # Long-form gets the per-theme clickable thumbnail (scenic + headline).
-    # Shorts use an auto-selected video frame — skip the custom thumbnail to save
-    # API quota (thumbnails.set costs 50 units and Shorts barely use them).
+    # Long-form gets this upload's own version of the per-theme scenic
+    # thumbnail. Shorts use an auto-selected video frame — skip the custom
+    # thumbnail to save API quota (thumbnails.set costs 50 units).
     if fmt == "long":
-        gen_thumb = os.path.join(THUMBS_GEN, f"{key}.png")
-        src_thumb = gen_thumb if os.path.exists(gen_thumb) else THUMBNAIL
-        shutil.copyfile(src_thumb, thumb)
-        thumbnail_rel = os.path.relpath(thumb, ROOT)
+        thumbnail_rel = os.path.relpath(feature_thumbnail(key, thumb, seed, volume), ROOT)
     else:
         thumbnail_rel = None
     report = qc(fmt, video, hours)

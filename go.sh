@@ -2,9 +2,18 @@
 set -euo pipefail
 echo "=== Meditated Sleeping - Full Server Setup ==="
 
+# Stream keys: prompted for (hidden) when not passed as arguments. Passing them
+# as arguments also works but leaves them in your shell history.
 K1="${1:-}" K2="${2:-}" K3="${3:-}" K4="${4:-}" K5="${5:-}"
-if [ -z "$K1" ] || [ -z "$K5" ]; then
-  echo "Usage: bash go.sh SLEEP_KEY SOLF_KEY FOREST_KEY ROMANTIC_KEY RAIN_KEY"
+if [ -z "$K1" ]; then
+  read -rsp "Stream key for sleeping:  " K1; echo
+  read -rsp "Stream key for solfeggio: " K2; echo
+  read -rsp "Stream key for forest:    " K3; echo
+  read -rsp "Stream key for romantic:  " K4; echo
+  read -rsp "Stream key for rain:      " K5; echo
+fi
+if [ -z "$K1" ] || [ -z "$K2" ] || [ -z "$K3" ] || [ -z "$K4" ] || [ -z "$K5" ]; then
+  echo "Need all 5 stream keys (sleeping, solfeggio, forest, romantic, rain)."
   exit 1
 fi
 
@@ -31,6 +40,7 @@ printf '%s\n' \
   "romantic|romantic_loop.wav|${K4}|Romantic Piano 24/7" \
   "rain|rain_loop.wav|${K5}|Rain Sounds 24/7" \
   > livestream/streams.conf
+chmod 600 livestream/streams.conf  # holds the stream keys
 echo "  Done! 5 streams configured."
 
 echo "[3/6] Setting up directories..."
@@ -58,7 +68,10 @@ echo "[5/6] Starting all streams..."
 bash livestream/stream_manager.sh start
 
 echo "[6/6] Setting up auto-restart on reboot..."
-(crontab -l 2>/dev/null; echo "@reboot cd /root/blackscreen-youtube-automation && bash livestream/stream_manager.sh start") | crontab -
+# Replace (never append) the entry, so re-running this script can't stack up
+# duplicate @reboot lines that would start two ffmpeg pushes per stream key.
+REBOOT_LINE="@reboot cd /root/blackscreen-youtube-automation && bash livestream/stream_manager.sh start"
+(crontab -l 2>/dev/null | grep -vF "livestream/stream_manager.sh start"; echo "$REBOOT_LINE") | crontab -
 
 echo ""
 echo "=== ALL DONE! 5 streams running 24/7 ==="

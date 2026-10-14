@@ -372,6 +372,10 @@ GLOBAL_TAGS = [
 # Natural-language phrase for the description (kept short and readable).
 PERFECT_FOR = "deep work, studying, dark academia, writing, meditation, and sleep"
 
+# Second sentence of every description: 'How to use: play at a low,
+# comfortable volume to <HOW_TO>.' (see scripts/channel_kit.py).
+HOW_TO = 'focus, study, write, meditate, or relax — leave it on for uninterrupted work'
+
 # Auto-playlists: every long-form is added to its sub-niche playlist on upload.
 PLAYLISTS = {
     "dark_drone": {

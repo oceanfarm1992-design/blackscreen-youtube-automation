@@ -1,17 +1,19 @@
-# Python dependencies for the "Meditated Sleeping" production pipeline.
-# ffmpeg is a separate system package (installed via apt in the workflow), not a pip dep.
+# Python dependencies for every channel's production pipeline.
+# ffmpeg and the DejaVu fonts are system packages (installed via apt in the
+# workflows), not pip deps.
+#
+# Upper bounds stop an unattended scheduled run from picking up a new MAJOR
+# version that breaks the render (Pillow 13, for example, removes APIs that
+# 12 only deprecated). Raise a cap deliberately, after `python -m pytest`.
 
 # Audio synthesis
-numpy>=1.26
-soundfile>=0.12
+numpy>=1.26,<3
+soundfile>=0.12,<1
 
-# Aether & Ash: procedural video generation (noise field + blur)
-Pillow>=10.0
+# Procedural video frames + thumbnails
+Pillow>=10.0,<13
 
-# AI music generation (MusicGen via Replicate)
-replicate>=1.0
-
-# YouTube Data API v3 upload (queue-as-private)
-google-auth>=2.28
-google-auth-oauthlib>=1.2
-google-api-python-client>=2.120
+# YouTube Data API v3 upload
+google-auth>=2.28,<3
+google-auth-oauthlib>=1.2,<2
+google-api-python-client>=2.120,<3

@@ -1,135 +1,21 @@
 #!/usr/bin/env python3
 """
-Build SEO metadata (title, description, tags) for an "Aether & Ash" theme + format.
+Build SEO metadata (title, description, tags) for a "Aether & Ash" theme + format.
+
+All logic is shared with the other animated channels -- see
+scripts/channel_kit.py. This file only binds the "Aether & Ash" themes
+(themes.py in this folder).
 
 Usage:
-    python make_metadata.py --theme void_drone --format long --out meta_long.json
-    python make_metadata.py --theme auto --format short --out meta_short.json
-
-Writes a JSON file consumed by the uploader, plus prints a human-readable summary.
+    python aether/make_metadata.py --theme void_drone --format long --volume 3 --out meta.json
 """
-import argparse
-import json
+import os
 import sys
 
-import themes as T
+import themes as T  # this channel's themes.py (script dir is first on sys.path)
 
-# Windows consoles default to cp1252 and choke on emoji in titles; force UTF-8.
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-
-CATEGORY_MUSIC = "10"
-
-# YouTube counts the combined length of all tags against a 500-char cap (and adds
-# quotes around multi-word tags). Pack to a safe 480 so we never get rejected.
-TAG_CHAR_LIMIT = 480
-
-
-def with_volume(title: str, volume: int | None) -> str:
-    """Add 'Vol. N' just before the title's emoji ('Creek Hollow Vol. 3 🏞️ ...'),
-    so every repeat of a theme gets a distinct title instead of a duplicate."""
-    if not volume:
-        return title
-    tag = f" Vol. {volume}"
-    for i, ch in enumerate(title):
-        if i and title[i - 1] == " " and ord(ch) > 0x2500:  # first emoji/symbol
-            return title[:i - 1] + tag + title[i - 1:]
-    if title.endswith(" #shorts"):
-        return title[:-len(" #shorts")] + tag + " #shorts"
-    return title + tag
-
-
-def fit_title(title: str, limit: int = 100) -> str:
-    """YouTube hard-caps titles at 100 chars. Trim the trailing descriptor at a
-    word boundary, keeping a Short's closing '#shorts'."""
-    if len(title) <= limit:
-        return title
-    tail = " #shorts" if title.endswith(" #shorts") else ""
-    head = title[:len(title) - len(tail)]
-    room = limit - len(tail)
-    cut = head[:room]
-    if head[room] != " ":
-        cut = cut.rsplit(" ", 1)[0]
-    return cut.rstrip(" |-&,") + tail
-
-
-def pack_tags(theme: dict, fmt: str) -> list:
-    """Theme-specific tags first (most relevant, slightly higher weight), then
-    the shared niche pool, deduped, filling up to the 500-char YouTube limit."""
-    pool = list(theme["tags"]) + T.GLOBAL_TAGS
-    if fmt == "short":
-        pool = ["shorts", "short video"] + pool  # Shorts discovery
-    tags, seen, used = [], set(), 0
-    for t in pool:
-        t = t.strip()
-        key = t.lower()
-        if not t or key in seen:
-            continue
-        cost = len(t) + (2 if " " in t else 0) + 1  # quotes for phrases + comma
-        if used + cost > TAG_CHAR_LIMIT:
-            continue
-        tags.append(t)
-        seen.add(key)
-        used += cost
-    return tags
-
-
-def build_metadata(theme: dict, fmt: str, volume: int | None = None) -> dict:
-    title = theme["short_title"] if fmt == "short" else theme["long_title"]
-
-    # YouTube hard-caps titles at 100 characters.
-    title = fit_title(with_volume(title, volume))
-
-    lead = f"14 Minutes of {theme['name']}" if fmt == "long" else theme["name"]
-    hashtags = " ".join("#" + t.replace(" ", "") for t in theme["tags"][:3])
-    if fmt == "short":
-        hashtags += " #shorts"
-    visual_line = (
-        " Paired with a slow, generative ambient animation — unique every "
-        "time, never a static loop." if fmt == "long" else ""
-    )
-    description = (
-        f"{lead}.{visual_line}\n\n"
-        f"{theme['description']}\n\n"
-        f"\U0001F3A7 How to use: play at a low, comfortable volume to focus, "
-        f"study, write, meditate, or relax — leave it on for uninterrupted work.\n\n"
-        f"Perfect for {T.PERFECT_FOR}.\n\n"
-        f"{hashtags}"
-        + T.DESCRIPTION_FOOTER.format(brand=T.BRAND_NAME, tagline=T.BRAND_TAGLINE)
-    )
-
-    tags = pack_tags(theme, fmt)
-
-    return {
-        "theme": theme["key"],
-        "format": fmt,
-        "title": title,
-        "description": description,
-        "tags": tags,
-        "categoryId": CATEGORY_MUSIC,
-        "privacyStatus": "public",
-    }
-
-
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--theme", default="auto", help="theme key or 'auto' for date rotation")
-    p.add_argument("--format", required=True, choices=["short", "long"])
-    p.add_argument("--volume", type=int, default=None,
-                   help="repeat number of this theme; adds 'Vol. N' to the title")
-    p.add_argument("--out", default="metadata.json")
-    args = p.parse_args()
-
-    theme = T.resolve_theme(args.theme)
-    meta = build_metadata(theme, args.format, args.volume)
-    with open(args.out, "w", encoding="utf-8") as f:
-        json.dump(meta, f, ensure_ascii=False, indent=2)
-
-    print(f"Wrote {args.out}")
-    print(f"  theme : {meta['theme']} ({args.format})")
-    print(f"  title : {meta['title']}")
-    print(f"  tags  : {len(meta['tags'])} tags")
-
+sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+import channel_kit  # noqa: E402
 
 if __name__ == "__main__":
-    main()
+    channel_kit.metadata_main(T)

@@ -224,6 +224,10 @@ GLOBAL_TAGS = [
 
 PERFECT_FOR = "late-night focus, driving playlists, studying, and unwinding"
 
+# Second sentence of every description: 'How to use: play at a low,
+# comfortable volume to <HOW_TO>.' (see scripts/channel_kit.py).
+HOW_TO = 'focus, study, drive, or relax — leave it on for uninterrupted work'
+
 PLAYLISTS = {
     "driving": {
         "title": "Night Drive & Highway Ambient \U0001F697",

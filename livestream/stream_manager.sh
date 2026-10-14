@@ -44,6 +44,7 @@ if [ ! -f "$STREAMS_FILE" ]; then
 # sleeping|sleeping_loop.wav|zzzz-zzzz-zzzz-zzzz|🔴 24/7 Deep Sleep Music
 # romantic|romantic_loop.wav|aaaa-aaaa-aaaa-aaaa|🔴 24/7 Romantic & Calm Piano
 CONF
+    chmod 600 "$STREAMS_FILE"  # will hold the stream keys
     echo "Created $STREAMS_FILE — edit it with your stream keys first."
     exit 1
 fi
@@ -74,7 +75,7 @@ start_stream() {
     # -tune stillimage: optimized for static frames (very low CPU)
     # -b:v 1500k: YouTube recommends 1500-4000k for 720p live
     # -maxrate/bufsize: CBR for stable stream
-    # -g 120: keyframe every 2s (YouTube requirement)
+    # -g 60: keyframe every 2s at 30fps (YouTube's recommended interval)
     nohup bash -c "
         while true; do
             ffmpeg -re \
@@ -82,7 +83,7 @@ start_stream() {
                 -loop 1 -framerate 1 -i '$BRAND_IMG' \
                 -c:v libx264 -preset ultrafast -tune stillimage \
                 -b:v 1500k -maxrate 1500k -bufsize 3000k \
-                -pix_fmt yuv420p -g 120 -r 30 \
+                -pix_fmt yuv420p -g 60 -r 30 \
                 -c:a aac -b:a 192k -ar 44100 \
                 -f flv '$RTMP_URL/$key' \
                 >> '$log_file' 2>&1

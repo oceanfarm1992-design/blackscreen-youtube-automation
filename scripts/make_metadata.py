@@ -86,7 +86,8 @@ def build_metadata(theme: dict, fmt: str, hours: int, volume: int | None = None)
     # Keyword-rich but natural description: a strong first line (search snippet),
     # the theme blurb, a how-to, a "perfect for" line, then <=3 hashtags. (>15
     # hashtags makes YouTube ignore ALL of them, so we keep exactly 3.)
-    lead = f"{hours} Hours of {theme['name']}" if fmt == "long" else theme["name"]
+    name = f"{theme['name']} (Vol. {volume})" if volume else theme["name"]
+    lead = f"{hours} Hours of {name}" if fmt == "long" else name
     hashtags = " ".join("#" + t.replace(" ", "") for t in theme["tags"][:3])
     if fmt == "short":
         hashtags += " #shorts"

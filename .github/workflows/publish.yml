@@ -40,6 +40,9 @@ on:
       shorts:
         description: "Test only: number of Shorts (0 = full daily batch)"
         default: "0"
+      upload:
+        description: "Test only: 'false' renders + QCs without uploading (see the run's artifacts)"
+        default: "true"
       longs:
         description: "Test only: number of long-forms (0 = full daily batch)"
         default: "0"
@@ -76,7 +79,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          sudo apt-get update && sudo apt-get install -y ffmpeg
+          sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core fonts-dejavu-extra
 
       # AI-clip download removed on purpose: MusicGen weights are CC-BY-NC
       # (non-commercial), so we keep the monetized channel on 100% original
@@ -105,15 +108,22 @@ jobs:
           fi
 
       - name: Produce video(s) + QC
+        # Inputs arrive as env vars -- never pasted into the script text -- so a
+        # crafted workflow_dispatch value can't inject shell commands.
+        env:
+          SHORTS: ${{ github.event.inputs.shorts || 0 }}
+          LONGS: ${{ github.event.inputs.longs || 0 }}
+          SLOT: ${{ steps.slot.outputs.slot }}
+          RUN_DATE: ${{ steps.slot.outputs.date }}
+          RUN_ID: ${{ github.run_id }}
+          HOURS: ${{ github.event.inputs.hours }}
         run: |
-          SHORTS="${{ github.event.inputs.shorts || 0 }}"
-          LONGS="${{ github.event.inputs.longs || 0 }}"
-          SLOT="${{ steps.slot.outputs.slot }}"
-          RUN_DATE="${{ steps.slot.outputs.date }}"
+          for n in "$SHORTS" "$LONGS" "$HOURS"; do
+            case "$n" in *[!0-9]*) echo "shorts/longs/hours must be whole numbers"; exit 1 ;; esac
+          done
           # Manual/test runs draw from their own seed range, so they can never
           # re-render a scheduled day's video.
-          MANUAL_SEED=$(( ${{ github.run_id }} % 1000000000 ))
-          HOURS="${{ github.event.inputs.hours }}"
+          MANUAL_SEED=$(( RUN_ID % 1000000000 ))
           # Blank HOURS -> omit --hours so produce.py uses the per-theme duration
           # map (combos 3h, solo frequencies 8h, nature/music 10h).
           HOURS_ARG=""
@@ -134,12 +144,14 @@ jobs:
         run: |
           for m in out/*_manifest.json; do echo "--- $m ---"; cat "$m"; echo; done
 
-      - name: Upload to YouTube as PUBLIC (only if secrets are set)
-        if: ${{ env.YT_REFRESH_TOKEN != '' || env.YT_SHORTS_REFRESH_TOKEN != '' }}
+      - name: Upload to YouTube (only if secrets are set)
+        if: ${{ (env.YT_REFRESH_TOKEN != '' || env.YT_SHORTS_REFRESH_TOKEN != '') && github.event.inputs.upload != 'false' }}
+        env:
+          PRIVACY: ${{ github.event.inputs.privacy || 'public' }}
         run: |
-          python scripts/publish_queue.py --out-dir out --privacy "${{ github.event.inputs.privacy || 'public' }}"
+          python scripts/publish_queue.py --out-dir out --privacy "$PRIVACY"
 
-      - name: Upload metadata + manifests as artifacts
+      - name: Upload metadata, manifests + thumbnails as artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -147,4 +159,5 @@ jobs:
           path: |
             out/*_manifest.json
             out/*_meta.json
+            out/*_thumb.png
           retention-days: 14

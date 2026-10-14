@@ -246,6 +246,10 @@ GLOBAL_TAGS = [
 
 PERFECT_FOR = "sound baths, meditation, deep sleep, anxiety relief, and relaxation"
 
+# Second sentence of every description: 'How to use: play at a low,
+# comfortable volume to <HOW_TO>.' (see scripts/channel_kit.py).
+HOW_TO = 'meditate, relax, or fall asleep — leave it on for an uninterrupted sound bath'
+
 PLAYLISTS = {
     "solfeggio": {
         "title": "Solfeggio Sound Baths \U00002728",

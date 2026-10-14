@@ -218,6 +218,10 @@ GLOBAL_TAGS = [
 
 PERFECT_FOR = "studying, relaxing, reading, gardening, and quiet nature focus"
 
+# Second sentence of every description: 'How to use: play at a low,
+# comfortable volume to <HOW_TO>.' (see scripts/channel_kit.py).
+HOW_TO = 'focus, study, read, or relax — leave it on for uninterrupted calm'
+
 PLAYLISTS = {
     "guitar_nature": {
         "title": "Guitar & Nature Ambient \U0001FAB4",

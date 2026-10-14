@@ -126,7 +126,7 @@ def _noise_field(w, h, rng, tilt=1.6, blur_frac=0.03):
     field -= field.min()
     field /= (field.max() + 1e-9)
 
-    img = Image.fromarray((field * 255).astype(np.uint8), mode="L")
+    img = Image.fromarray((field * 255).astype(np.uint8))  # uint8 HxW -> L
     img = img.filter(ImageFilter.GaussianBlur(radius=max(2, int(min(w, h) * blur_frac))))
     return np.asarray(img).astype(np.float32) / 255.0
 

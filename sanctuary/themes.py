@@ -233,6 +233,10 @@ GLOBAL_TAGS = [
 
 PERFECT_FOR = "coding, deep work, studying, late-night focus, and space-themed relaxation"
 
+# Second sentence of every description: 'How to use: play at a low,
+# comfortable volume to <HOW_TO>.' (see scripts/channel_kit.py).
+HOW_TO = 'focus, study, code, or relax — leave it on for uninterrupted work'
+
 PLAYLISTS = {
     "dark_drone": {
         "title": "Deep Space Drone \U000026AB",

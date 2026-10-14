@@ -227,6 +227,10 @@ GLOBAL_TAGS = [
 
 PERFECT_FOR = "studying, co-working, reading, writing, and cozy focus sessions"
 
+# Second sentence of every description: 'How to use: play at a low,
+# comfortable volume to <HOW_TO>.' (see scripts/channel_kit.py).
+HOW_TO = 'focus, study, write, read, or relax — leave it on for uninterrupted work'
+
 PLAYLISTS = {
     "piano_study": {
         "title": "Piano Study & Focus \U0001F56F️",
