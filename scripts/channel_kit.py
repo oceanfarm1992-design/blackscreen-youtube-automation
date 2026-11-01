@@ -21,7 +21,7 @@ import shutil
 import subprocess
 import sys
 import zlib
-from datetime import date
+from datetime import date, timedelta
 
 SCRIPTS = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(SCRIPTS)
@@ -182,9 +182,95 @@ def run(cmd):
 
 
 def volume_for(T, d, count, pos):
-    """1-based count of how many times this rotation position's theme has come
-    up since ANCHOR, so a theme's repeat uploads get distinct titles (Vol. N)."""
+    """Legacy (pre-RULES_START) rotation: 1-based count of how many times this
+    rotation position's theme had come up since ANCHOR."""
     return max(1, ((d - T.ANCHOR).days * count + pos) // len(T.THEMES) + 1)
+
+
+# --------------------------------------------------------------------------- #
+# Publishing cadence (all channels, from RULES_START):
+#   * one Short EVERY day, cycling through every theme in order
+#   * one feature EVERY FEATURE_EVERY_DAYS days, cycling through every theme
+#     on its own counter (so every theme gets both formats)
+# Feature days are staggered per channel (FEATURE_DAY_OFFSET in themes.py) so
+# the channels don't all post long videos on the same day. Volume numbers
+# continue above anything the earlier one-feature-a-day rotation used, so a
+# new title can never repeat an old one.
+
+RULES_START = date(2026, 11, 1)
+FEATURE_EVERY_DAYS = 4
+
+
+def _rules_day(d):
+    return (d - RULES_START).days
+
+
+def _every(T):
+    return getattr(T, "FEATURE_EVERY_DAYS", FEATURE_EVERY_DAYS)
+
+
+def _offset(T):
+    return getattr(T, "FEATURE_DAY_OFFSET", 0) % _every(T)
+
+
+def _volume_base(T):
+    """Highest volume the legacy daily rotation issued, through RULES_START."""
+    days = (RULES_START - T.ANCHOR).days
+    return max(0, (days * T.DAILY_COUNT + T.DAILY_COUNT - 1) // len(T.THEMES) + 1)
+
+
+def is_feature_day(T, d):
+    return (_rules_day(d) - _offset(T)) % _every(T) == 0
+
+
+def next_feature_day(T, d):
+    while not is_feature_day(T, d):
+        d += timedelta(days=1)
+    return d
+
+
+def feature_number(T, d):
+    """0-based index of the feature due on (or most recently before) day d."""
+    return (_rules_day(d) - _offset(T)) // _every(T)
+
+
+def short_at(T, n):
+    """The n-th daily Short since RULES_START: (theme, volume)."""
+    L = len(T.THEMES)
+    return T.THEMES[n % L], _volume_base(T) + n // L + 1
+
+
+def feature_at(T, k):
+    """The k-th feature since RULES_START: (theme, volume)."""
+    L = len(T.THEMES)
+    return T.THEMES[k % L], _volume_base(T) + k // L + 1
+
+
+def short_for(T, d):
+    return short_at(T, _rules_day(d))
+
+
+def feature_for(T, d):
+    return feature_at(T, feature_number(T, d))
+
+
+def scheduled_slot(T, d, slot):
+    """(theme, fmt, volume) for scheduled slot 0 (feature) / 1 (Short) on day
+    d, or None if slot 0 falls on a non-feature day. Days before RULES_START
+    -- a late-starting run for an earlier day -- keep the old daily rotation
+    so they can't duplicate a title the new cadence will use."""
+    if d < RULES_START:
+        selection = T.daily_selection(d, count=T.DAILY_COUNT)
+        pos = slot % len(selection)
+        fmt = "long" if slot < T.LONGS_PER_DAY else "short"
+        return selection[pos], fmt, volume_for(T, d, T.DAILY_COUNT, pos)
+    if slot == 0:
+        if not is_feature_day(T, d):
+            return None
+        theme, vol = feature_for(T, d)
+        return theme, "long", vol
+    theme, vol = short_for(T, d)
+    return theme, "short", vol
 
 
 def ffprobe_duration(path):
@@ -224,11 +310,11 @@ def qc(T, fmt, video_path, target_sec=None):
 
 
 def long_hours_for(T, d):
-    """Hours for the feature on day d if this channel makes hours-long
-    features (LONG_HOURS_CYCLE, e.g. (3, 8, 10) -> 3h, 8h, 10h, 3h, ...), else
-    None for the standard 14:30 feature."""
+    """Hours for the feature due on day d if this channel makes hours-long
+    features (LONG_HOURS_CYCLE, e.g. (3, 8, 10) -> successive features run 3h,
+    8h, 10h, 3h, ...), else None for the standard 14:30 feature."""
     cycle = getattr(T, "LONG_HOURS_CYCLE", ())
-    return cycle[(d - T.ANCHOR).days % len(cycle)] if cycle else None
+    return cycle[feature_number(T, d) % len(cycle)] if cycle else None
 
 
 def produce_one(ch, theme, fmt, out_dir, seed, run_date, volume=None, hours=None):
@@ -306,15 +392,14 @@ def produce_main(T):
     p.add_argument("--format", choices=["short", "long", "both"],
                    help="with --theme: which format(s) to render")
     p.add_argument("--daily", action="store_true",
-                   help=f"produce the day's batch: {T.DAILY_COUNT} videos "
-                        f"({T.LONGS_PER_DAY} feature + {T.SHORTS_PER_DAY} short)")
+                   help="produce the day's Short, plus the feature on feature days")
     p.add_argument("--shorts", type=int, default=0,
                    help="test batch: produce Shorts for the first N of the day's themes")
     p.add_argument("--longs", type=int, default=0,
                    help="test batch: produce features for the first M of the day's themes")
     p.add_argument("--slot", type=int, default=None,
-                   help="produce ONE video: slot 0..(DAILY_COUNT-1) of the day's rotation "
-                        "(slots < LONGS_PER_DAY = feature, rest = short)")
+                   help="produce ONE scheduled video: 0 = the feature (only on feature "
+                        "days -- otherwise exits without producing), 1 = the daily Short")
     p.add_argument("--seed", type=int, default=None,
                    help="default: the run date's seed block (YYYYMMDD*1000)")
     p.add_argument("--date", default=None,
@@ -346,37 +431,28 @@ def produce_main(T):
 
     results = []
     if args.slot is not None:
-        selection = T.daily_selection(run_date, count=T.DAILY_COUNT)
-        pos = args.slot % len(selection)
-        theme = selection[pos]
-        fmt = "long" if args.slot < T.LONGS_PER_DAY else "short"
-        print(f"Slot {args.slot} for {run_date}: {theme['key']} {fmt}")
-        results.append(one(theme, fmt, seed + args.slot,
-                           volume_for(T, run_date, T.DAILY_COUNT, pos)))
+        pick = scheduled_slot(T, run_date, args.slot)
+        if pick is None:
+            print(f"No feature on {run_date}: features go out every {_every(T)} days "
+                  f"(next: {next_feature_day(T, run_date)}). Nothing to produce.")
+            return
+        theme, fmt, vol = pick
+        print(f"Slot {args.slot} for {run_date}: {theme['key']} {fmt} Vol. {vol}")
+        results.append(one(theme, fmt, seed + args.slot, vol))
     elif args.shorts or args.longs:
-        need = max(args.shorts, args.longs, 1)
-        count = max(need, T.DAILY_COUNT)
-        selection = T.daily_selection(run_date, count=count)
-        print(f"Test batch: {args.longs} feature(s) + {args.shorts} short(s) from: "
-              + ", ".join(t["key"] for t in selection[:need]))
+        k, n = feature_number(T, run_date), _rules_day(run_date)
         for i in range(args.longs):
-            results.append(one(selection[i], "long", seed + i * 10,
-                               volume_for(T, run_date, count, i)))
+            theme, vol = feature_at(T, k + i)
+            results.append(one(theme, "long", seed + i * 10, vol))
         for i in range(args.shorts):
-            results.append(one(selection[i], "short", seed + i * 10 + 1,
-                               volume_for(T, run_date, count, i)))
+            theme, vol = short_at(T, n + i)
+            results.append(one(theme, "short", seed + i * 10 + 1, vol))
     elif args.daily:
-        selection = T.daily_selection(run_date, count=T.DAILY_COUNT)
-        longs = selection[:T.LONGS_PER_DAY]
-        shorts = selection[T.LONGS_PER_DAY:T.LONGS_PER_DAY + T.SHORTS_PER_DAY]
-        print("Daily batch: " + ", ".join(t["key"] for t in longs) + " (feature) + "
-              + ", ".join(t["key"] for t in shorts) + " (short)")
-        for i, theme in enumerate(longs):
-            results.append(one(theme, "long", seed + i,
-                               volume_for(T, run_date, T.DAILY_COUNT, i)))
-        for i, theme in enumerate(shorts):
-            results.append(one(theme, "short", seed + 100 + i,
-                               volume_for(T, run_date, T.DAILY_COUNT, T.LONGS_PER_DAY + i)))
+        if is_feature_day(T, run_date):
+            theme, vol = feature_for(T, run_date)
+            results.append(one(theme, "long", seed, vol))
+        theme, vol = short_for(T, run_date)
+        results.append(one(theme, "short", seed + 1, vol))
     else:
         theme = T.resolve_theme(args.theme, run_date)
         formats = ["short", "long"] if args.format == "both" else [args.format]

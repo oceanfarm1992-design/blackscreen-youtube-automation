@@ -25,6 +25,7 @@ import subprocess
 import sys
 from datetime import date
 
+import channel_kit as K
 import themes as T
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -59,7 +60,6 @@ def feature_thumbnail(key, out_path, seed, volume):
         import numpy as np
         from PIL import Image
 
-        import channel_kit as K
         img = Image.open(src).convert("RGB").resize((K.THUMB_W, K.THUMB_H))
         img = K.grade_and_badge(img, volume, PILL_FILL, np.random.default_rng(seed))
         img.save(out_path, "PNG", optimize=True)
@@ -68,11 +68,6 @@ def feature_thumbnail(key, out_path, seed, volume):
         shutil.copyfile(src, out_path)
     return out_path
 
-
-def volume_for(d, count, pos):
-    """1-based count of how many times this rotation position's theme has come
-    up since ANCHOR, so a theme's repeat uploads get distinct titles (Vol. N)."""
-    return max(1, ((d - T.ANCHOR).days * count + pos) // len(T.THEMES) + 1)
 
 
 def ffprobe_duration(path):
@@ -198,16 +193,14 @@ def main():
     p.add_argument("--format", choices=["short", "long", "both"],
                    help="required unless --daily is used")
     p.add_argument("--daily", action="store_true",
-                   help=f"produce the day's batch: {T.DAILY_COUNT} musics x (12h long + Short)")
-    p.add_argument("--count", type=int, default=T.DAILY_COUNT,
-                   help="number of musics per day for --daily")
+                   help="produce the day's Short, plus the long-form on long-form days")
     p.add_argument("--shorts", type=int, default=0,
                    help="test batch: produce Shorts for the first N of today's musics")
     p.add_argument("--longs", type=int, default=0,
                    help="test batch: produce long-forms for the first M of today's musics")
     p.add_argument("--slot", type=int, default=None,
-                   help="produce ONE video: slot 0..(2*DAILY_COUNT-1) of today's rotation "
-                        "(even=long, odd=short); used by the spaced daily schedule")
+                   help="produce ONE scheduled video: 0 = the long-form (only on long-form "
+                        "days -- otherwise exits without producing), 1 = the daily Short")
     p.add_argument("--hours", type=int, default=None,
                    help="override long-form length; default = per-theme map "
                         "(combos 3h, solo freq 8h, nature/music 10h)")
@@ -229,46 +222,38 @@ def main():
     seed = args.seed if args.seed is not None else int(run_date.strftime("%Y%m%d")) * 1000
     os.makedirs(args.out_dir, exist_ok=True)
 
+    # Cadence shared with every channel (see channel_kit): a Short every day,
+    # a long-form every FEATURE_EVERY_DAYS days, each on its own full rotation.
+
     results = []
     if args.slot is not None:
-        # One video per run, so the day's uploads are spread out (never overlap).
-        # slots 0..LONGS_PER_DAY-1 = long-forms; remaining slots = Shorts.
-        # Each slot maps to a different music.
-        selection = T.daily_selection(run_date, count=T.DAILY_COUNT)
-        pos = args.slot % len(selection)
-        theme = selection[pos]
-        fmt = "long" if args.slot < T.LONGS_PER_DAY else "short"
-        print(f"Slot {args.slot} for {run_date}: {theme['key']} {fmt}")
+        pick = K.scheduled_slot(T, run_date, args.slot)
+        if pick is None:
+            print(f"No long-form on {run_date}: they go out every {K._every(T)} days "
+                  f"(next: {K.next_feature_day(T, run_date)}). Nothing to produce.")
+            return
+        theme, fmt, vol = pick
+        print(f"Slot {args.slot} for {run_date}: {theme['key']} {fmt} Vol. {vol}")
         results.append(produce_one(theme, fmt, args.out_dir, args.hours, seed + args.slot,
-                                   run_date, volume_for(run_date, T.DAILY_COUNT, pos)))
+                                   run_date, vol))
     elif args.shorts or args.longs:
-        # Custom test batch: M long-forms + N Shorts from today's rotation.
-        need = max(args.shorts, args.longs, 1)
-        count = max(need, T.DAILY_COUNT)
-        selection = T.daily_selection(run_date, count=count)
-        print(f"Test batch: {args.longs} long(s) + {args.shorts} short(s) from: "
-              + ", ".join(t["key"] for t in selection[:need]))
+        k, n = K.feature_number(T, run_date), K._rules_day(run_date)
         for i in range(args.longs):
-            results.append(produce_one(selection[i], "long", args.out_dir, args.hours,
-                                       seed + i * 10, run_date, volume_for(run_date, count, i)))
+            theme, vol = K.feature_at(T, k + i)
+            results.append(produce_one(theme, "long", args.out_dir, args.hours,
+                                       seed + i * 10, run_date, vol))
         for i in range(args.shorts):
-            results.append(produce_one(selection[i], "short", args.out_dir, args.hours,
-                                       seed + i * 10 + 1, run_date,
-                                       volume_for(run_date, count, i)))
+            theme, vol = K.short_at(T, n + i)
+            results.append(produce_one(theme, "short", args.out_dir, args.hours,
+                                       seed + i * 10 + 1, run_date, vol))
     elif args.daily:
-        # LONGS_PER_DAY long-forms + SHORTS_PER_DAY Shorts, each a different music.
-        selection = T.daily_selection(run_date, count=T.DAILY_COUNT)
-        longs = selection[:T.LONGS_PER_DAY]
-        shorts = selection[T.LONGS_PER_DAY:T.LONGS_PER_DAY + T.SHORTS_PER_DAY]
-        print("Daily batch: " + ", ".join(t["key"] for t in longs) + " (long) + "
-              + ", ".join(t["key"] for t in shorts) + " (short)")
-        for i, theme in enumerate(longs):
-            results.append(produce_one(theme, "long", args.out_dir, args.hours, seed + i,
-                                       run_date, volume_for(run_date, T.DAILY_COUNT, i)))
-        for i, theme in enumerate(shorts):
-            results.append(produce_one(theme, "short", args.out_dir, args.hours, seed + 100 + i,
-                                       run_date, volume_for(run_date, T.DAILY_COUNT,
-                                                            T.LONGS_PER_DAY + i)))
+        if K.is_feature_day(T, run_date):
+            theme, vol = K.feature_for(T, run_date)
+            results.append(produce_one(theme, "long", args.out_dir, args.hours, seed,
+                                       run_date, vol))
+        theme, vol = K.short_for(T, run_date)
+        results.append(produce_one(theme, "short", args.out_dir, args.hours, seed + 1,
+                                   run_date, vol))
     else:
         theme = T.resolve_theme(args.theme, run_date)
         formats = ["short", "long"] if args.format == "both" else [args.format]

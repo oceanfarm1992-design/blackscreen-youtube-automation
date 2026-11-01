@@ -33,6 +33,13 @@ LONGS_PER_DAY = 1
 SHORTS_PER_DAY = 1
 DAILY_COUNT = LONGS_PER_DAY + SHORTS_PER_DAY
 
+# Cadence (scripts/channel_kit.py): one Short every day, one feature every
+# 4 days. FEATURE_DAY_OFFSET staggers which day of the 4 this channel's
+# feature lands on, so the channels don't all post long videos together.
+# (LONGS_PER_DAY / SHORTS_PER_DAY above only describe the old daily
+# rotation, used to continue its Vol. numbers.)
+FEATURE_DAY_OFFSET = 1
+
 # Accent color (hex) for each theme's generative animated background --
 # drives the colorchannelmixer tint in make_animated_video.py. Chosen to
 # match each theme's mood/thumbnail palette.

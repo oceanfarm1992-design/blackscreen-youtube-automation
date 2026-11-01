@@ -1,5 +1,10 @@
 name: daily-produce
 
+# CADENCE (from 2026-11-01): one Short every day + one feature every 4 days,
+# each on its own full theme rotation (scripts/channel_kit.py). The feature
+# cron below still fires daily but exits without producing on non-feature days.
+# Older per-day counts mentioned below describe the previous schedule.
+#
 # Produces "Meditated Sleeping" videos, ONE per run, spread across the day so runs
 # never overlap. 2 assets/day = 1 long-form (10h, 1920x1080) + 1 Short (59s,
 # 1080x1920), on the black #0D0D0D branded frame (reduced from 6+6).
@@ -27,7 +32,7 @@ name: daily-produce
 
 on:
   schedule:
-    - cron: "0 0 * * *"     # slot 0   00:00 UTC  long
+    - cron: "0 0 * * *"     # slot 0   00:00 UTC  long -- feature days only (every 4 days)
     - cron: "0 12 * * *"    # slot 1   12:00 UTC  short
   workflow_dispatch:
     inputs:
@@ -142,7 +147,10 @@ jobs:
 
       - name: Show queue manifests
         run: |
-          for m in out/*_manifest.json; do echo "--- $m ---"; cat "$m"; echo; done
+          for m in out/*_manifest.json; do
+            [ -e "$m" ] || { echo "Nothing produced this run (not a feature day)."; break; }
+            echo "--- $m ---"; cat "$m"; echo
+          done
 
       - name: Upload to YouTube (only if secrets are set)
         if: ${{ (env.YT_REFRESH_TOKEN != '' || env.YT_SHORTS_REFRESH_TOKEN != '') && github.event.inputs.upload != 'false' }}

@@ -1,5 +1,10 @@
 name: daily-produce-aether
 
+# CADENCE (from 2026-11-01): one Short every day + one feature every 4 days,
+# each on its own full theme rotation (scripts/channel_kit.py). The feature
+# cron below still fires daily but exits without producing on non-feature days.
+# Older per-day counts mentioned below describe the previous schedule.
+#
 # Produces "Aether & Ash" videos, ONE per run, spread across the day so runs
 # never overlap. 1 feature (14:30, 1920x1080, real procedurally-animated
 # visual -- see aether/make_animated_video.py) + 1 Short (59s, 1080x1920)
@@ -26,7 +31,7 @@ name: daily-produce-aether
 
 on:
   schedule:
-    - cron: "0 5 * * *"     # slot 0   05:00 UTC  feature (14:30)
+    - cron: "0 5 * * *"     # slot 0   05:00 UTC  feature (14:30) -- feature days only (every 4 days)
     - cron: "0 17 * * *"    # slot 1   17:00 UTC  short
   workflow_dispatch:
     inputs:
@@ -131,7 +136,10 @@ jobs:
 
       - name: Show queue manifests
         run: |
-          for m in out/*_manifest.json; do echo "--- $m ---"; cat "$m"; echo; done
+          for m in out/*_manifest.json; do
+            [ -e "$m" ] || { echo "Nothing produced this run (not a feature day)."; break; }
+            echo "--- $m ---"; cat "$m"; echo
+          done
 
       - name: Upload to YouTube (only if secrets are set)
         if: ${{ (env.AETHER_YT_REFRESH_TOKEN != '') && github.event.inputs.upload != 'false' }}

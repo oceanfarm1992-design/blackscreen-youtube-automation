@@ -54,23 +54,81 @@ def titles(folder, theme, fmt, volume):
 
 
 # --------------------------------------------------------------------------- #
+def scheduled_uploads(T, days):
+    """What the scheduler publishes from RULES_START: [(date, slot, theme, fmt, vol)]."""
+    out = []
+    for i in range(days):
+        d = K.RULES_START + timedelta(days=i)
+        if K.is_feature_day(T, d):
+            theme, vol = K.feature_for(T, d)
+            out.append((d, 0, theme["key"], "long", vol))
+        theme, vol = K.short_for(T, d)
+        out.append((d, 1, theme["key"], "short", vol))
+    return out
+
+
 @pytest.mark.parametrize("folder", ALL)
 def test_two_years_of_uploads_are_all_unique(folder):
     T = THEMES[folder]
     seen_titles, seen_seeds = set(), set()
-    start = max(T.ANCHOR, date(2026, 10, 14))
-    for day in range(730):
-        d = start + timedelta(days=day)
-        selection = T.daily_selection(d, count=T.DAILY_COUNT)
-        for slot in range(T.DAILY_COUNT):
-            pos = slot % len(selection)
-            fmt = "long" if slot < T.LONGS_PER_DAY else "short"
-            key = (selection[pos]["key"], fmt, volume_for(folder, d, T.DAILY_COUNT, pos))
-            seed = int(d.strftime("%Y%m%d")) * 1000 + slot  # produce.py's seed for a slot
-            assert key not in seen_titles, f"duplicate upload {key} on {d}"
-            assert seed not in seen_seeds, f"seed {seed} reused on {d}"
-            seen_titles.add(key)
-            seen_seeds.add(seed)
+    for d, slot, key, fmt, vol in scheduled_uploads(T, 730):
+        seed = int(d.strftime("%Y%m%d")) * 1000 + slot  # produce.py's seed for a slot
+        assert (key, fmt, vol) not in seen_titles, f"duplicate upload {key} {fmt} Vol. {vol} on {d}"
+        assert seed not in seen_seeds, f"seed {seed} reused on {d}"
+        seen_titles.add((key, fmt, vol))
+        seen_seeds.add(seed)
+
+
+@pytest.mark.parametrize("folder", ALL)
+def test_one_short_daily_and_a_feature_every_4_days(folder):
+    T = THEMES[folder]
+    ups = scheduled_uploads(T, 120)
+    shorts = [u for u in ups if u[3] == "short"]
+    features = [u for u in ups if u[3] == "long"]
+    assert len(shorts) == 120 and len({u[0] for u in shorts}) == 120
+    gaps = {(b[0] - a[0]).days for a, b in zip(features, features[1:])}
+    assert gaps == {4} and len(features) == 30
+    # every theme gets both formats within a full rotation
+    L = len(T.THEMES)
+    assert {u[2] for u in shorts[:L]} == {t["key"] for t in T.THEMES}
+    assert {u[2] for u in scheduled_uploads(T, 4 * L) if u[3] == "long"} == {t["key"] for t in T.THEMES}
+
+
+@pytest.mark.parametrize("folder", ALL)
+def test_new_volumes_continue_above_the_old_rotation(folder):
+    """Vol. numbers from the new cadence start above every Vol. the old
+    one-feature-a-day rotation used, so no new title can repeat an old one."""
+    T = THEMES[folder]
+    old_max = max(K.volume_for(T, K.RULES_START, T.DAILY_COUNT, pos) for pos in range(T.DAILY_COUNT))
+    assert min(u[4] for u in scheduled_uploads(T, 60)) > old_max
+
+
+@pytest.mark.parametrize("folder", ALL)
+def test_late_runs_for_old_days_never_collide_with_new_cadence(folder):
+    """A run scheduled for a day before RULES_START can start after the switch
+    (GitHub runs crons hours late); it must keep the old rotation and still
+    never repeat a title the new cadence uses."""
+    T = THEMES[folder]
+    seen = set()
+    for i in range(-10, 90):
+        d = K.RULES_START + timedelta(days=i)
+        for slot in (0, 1):
+            pick = K.scheduled_slot(T, d, slot)
+            if pick is None:
+                continue
+            theme, fmt, vol = pick
+            key = (theme["key"], fmt, vol)
+            assert key not in seen, f"{d} slot {slot}: duplicate {key}"
+            seen.add(key)
+
+
+def test_feature_days_are_staggered_across_channels():
+    on_day = [sum(K.is_feature_day(THEMES[f], K.RULES_START + timedelta(days=i)) for f in ALL)
+              for i in range(4)]
+    assert sorted(on_day) == [1, 2, 2, 2], on_day
+    assert not any(K.is_feature_day(THEMES["aether"], K.RULES_START + timedelta(days=i))
+                   and K.is_feature_day(THEMES["hearth"], K.RULES_START + timedelta(days=i))
+                   for i in range(8)), "the two hours-long channels should render on different days"
 
 
 @pytest.mark.parametrize("folder", ALL)
@@ -159,11 +217,11 @@ def test_description_names_the_volume(folder):
 def test_verified_channels_rotate_3_8_10_hours():
     for folder in ANIMATED:
         T = THEMES[folder]
-        days = [K.long_hours_for(T, T.ANCHOR + timedelta(days=i)) for i in range(6)]
+        hours = [K.long_hours_for(T, u[0]) for u in scheduled_uploads(T, 24) if u[3] == "long"]
         if folder in ("aether", "hearth"):
-            assert days == [3, 8, 10, 3, 8, 10]
+            assert hours == [3, 8, 10, 3, 8, 10]
         else:
-            assert days == [None] * 6, f"{folder} isn't phone-verified: must stay under 15 min"
+            assert hours == [None] * 6, f"{folder} isn't phone-verified: must stay under 15 min"
 
 
 @pytest.mark.parametrize("folder", ["aether", "hearth"])
