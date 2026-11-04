@@ -11,8 +11,9 @@ stays under its own YouTube API quota:
 - **Shorts** — exactly **59 seconds**, vertical **1080×1920**, for reach/discovery.
 - **Long-form** — **10 hours**, **1920×1080**, for deep sleep and background ambience.
 
-All use the same immersive **`#0D0D0D`** black branded frame + thumbnail (glowing
-headphone icon + "Meditated Sleeping / Calm. Sleep. Restore."). Everything runs on
+Every video gets its own dim, slow generative animation (near-dark, sleep-friendly;
+see `scripts/make_animated_video.py`) with the headphone logo as a faint watermark,
+plus its own thumbnail and freshly synthesized audio. Everything runs on
 GitHub's Ubuntu runners; no machine of yours needs to stay on.
 
 ## Daily music rotation
@@ -47,8 +48,8 @@ Any music can be mixed with healing frequencies via `generate_theme_audio.py` fl
 scripts/produce.py --slot N        (N = 0..11, one video per run)
    │  slots 0-5 = 10h long-forms, slots 6-11 = 59s Shorts (each a music)
    ├─ generate_theme_audio.py   numpy synthesis (Short = 59s; long = seamless loop)
-   ├─ make_video.py             ffmpeg: branded #0D0D0D still + audio → mp4
-   ├─ assets/branding/…         assign the 1280×720 black #0D0D0D thumbnail
+   ├─ make_animated_video.py    dim per-video animation (own look per upload) + audio → mp4
+   ├─ assets/branding/…         per-upload graded thumbnail with a VOL. badge
    ├─ make_metadata.py          SEO title / description / tags per music & format
    └─ QC                        assert 59s / 8–12h and correct resolution
         → writes *_manifest.json, status "queued"

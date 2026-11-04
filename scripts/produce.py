@@ -4,7 +4,7 @@ Produce the day's video asset(s) end-to-end for the "Meditated Sleeping" channel
 
 For a chosen theme (or the date-based rotation) and format, this:
   1. synthesizes theme audio            (generate_theme_audio.py)
-  2. renders a branded #0D0D0D video     (make_video.py)
+  2. renders a dim, per-video animation   (make_animated_video.py)
   3. assigns the branded thumbnail       (assets/branding/thumbnail_1280x720.png)
   4. writes SEO metadata                 (make_metadata.py)
   5. runs QC on the durations            (59s Short / 8-12h long-form)
@@ -36,8 +36,8 @@ ROOT = os.path.dirname(HERE)
 BRAND = os.path.join(ROOT, "assets", "branding")
 THUMBNAIL = os.path.join(BRAND, "thumbnail_1280x720.png")
 THUMBS_GEN = os.path.join(ROOT, "assets", "thumbnails", "gen")  # per-theme clickable thumbnails
-FRAME_16x9 = os.path.join(BRAND, "brand_16x9.png")
-FRAME_9x16 = os.path.join(BRAND, "brand_9x16.png")
+ICON = os.path.join(BRAND, "icon.png")  # headphone logo, a faint corner watermark
+LONG_SEGMENT_SECONDS = 1800  # 30 seamless minutes of animation, looped to the full 8-12h
 
 SHORT_SECONDS = 59
 PILL_FILL = (232, 74, 95)  # channel red/pink, matches the thumbnail duration pill
@@ -112,6 +112,8 @@ def qc(fmt, video_path, hours):
 
 def produce_one(theme, fmt, out_dir, hours, seed, run_date, volume=None):
     key = theme["key"]
+    seed = K.render_seed(T, seed)  # this channel's own seed: never shared with another channel
+    variant = ["--variant", str(volume)] if volume else []
     # Long-form length is content-matched per theme (combos 3h, solo freq 8h,
     # nature/music 10h). An explicit --hours overrides it; otherwise use the map.
     if fmt == "long":
@@ -123,7 +125,16 @@ def produce_one(theme, fmt, out_dir, hours, seed, run_date, volume=None):
     meta = f"{stem}_meta.json"
 
     gta = os.path.join(HERE, "generate_theme_audio.py")
-    mv = os.path.join(HERE, "make_video.py")
+    mv = os.path.join(HERE, "make_animated_video.py")
+
+    def animate(seconds, width, height, segment=None):
+        cmd = [sys.executable, mv, "--audio", audio, "--duration-seconds", str(seconds),
+               "--width", str(width), "--height", str(height),
+               "--color", T.accent_for(key), "--icon", ICON, "--topic", T.topic_for(key),
+               "--dim", str(T.VISUAL_DIM), "--seed", str(seed), "--out", video] + variant
+        if segment:
+            cmd += ["--segment-seconds", str(segment)]
+        run(cmd)
     mm = os.path.join(HERE, "make_metadata.py")
 
     # Optional wellness frequency layers (Solfeggio/432 tone(s), brainwave beat,
@@ -138,22 +149,19 @@ def produce_one(theme, fmt, out_dir, hours, seed, run_date, volume=None):
 
     if fmt == "short":
         run([sys.executable, gta, "--theme", theme["synth"], "--seconds", str(SHORT_SECONDS),
-             "--seed", str(seed), "--out", audio] + freq)
-        run([sys.executable, mv, "--audio", audio, "--background", FRAME_9x16,
-             "--duration-seconds", str(SHORT_SECONDS), "--fps", "24", "--out", video])
+             "--seed", str(seed), "--out", audio] + variant + freq)
+        animate(SHORT_SECONDS, 1080, 1920)
         run([sys.executable, mm, "--theme", key, "--format", "short", "--out", meta] + vol)
     elif has_ai_clips:
         run([sys.executable, bla, "--theme", key, "--seconds", str(LONG_LOOP_SECONDS),
              "--seed", str(seed), "--out", audio])
-        run([sys.executable, mv, "--audio", audio, "--background", FRAME_16x9,
-             "--duration-hours", str(hours), "--fps", "1", "--out", video])
+        animate(hours * 3600, 1920, 1080, LONG_SEGMENT_SECONDS)
         run([sys.executable, mm, "--theme", key, "--format", "long", "--hours", str(hours),
              "--out", meta] + vol)
     else:
         run([sys.executable, gta, "--theme", theme["synth"], "--loop-seconds", str(LONG_LOOP_SECONDS),
-             "--seed", str(seed), "--out", audio] + freq)
-        run([sys.executable, mv, "--audio", audio, "--background", FRAME_16x9,
-             "--duration-hours", str(hours), "--fps", "1", "--out", video])
+             "--seed", str(seed), "--out", audio] + variant + freq)
+        animate(hours * 3600, 1920, 1080, LONG_SEGMENT_SECONDS)
         run([sys.executable, mm, "--theme", key, "--format", "long", "--hours", str(hours),
              "--out", meta] + vol)
 

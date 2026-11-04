@@ -41,6 +41,16 @@ LONG_AUDIO_LOOP_SECONDS = 900
 TAG_CHAR_LIMIT = 480
 
 
+def render_seed(T, seed):
+    """The seed a channel actually renders with: the schedule's seed mixed
+    with the channel's name. Every channel uses the same date-based seeds, so
+    without this two channels sharing a music preset (e.g. 'sleeping') would
+    render byte-identical audio on the same day. Deterministic, 56-bit."""
+    import hashlib
+    h = hashlib.sha256(f"{T.BRAND_NAME}|{int(seed)}".encode()).digest()
+    return int.from_bytes(h[:7], "big")
+
+
 def utf8_stdout():
     """Windows consoles default to cp1252 and choke on emoji in titles."""
     if hasattr(sys.stdout, "reconfigure"):
@@ -320,6 +330,8 @@ def long_hours_for(T, d):
 def produce_one(ch, theme, fmt, out_dir, seed, run_date, volume=None, hours=None):
     T = ch.T
     key = theme["key"]
+    seed = render_seed(T, seed)
+    variant = ["--variant", str(volume)] if volume else []
     hours = hours if fmt == "long" else None
     if fmt == "short":
         duration = SHORT_SECONDS
@@ -340,13 +352,12 @@ def produce_one(ch, theme, fmt, out_dir, seed, run_date, volume=None, hours=None
     segment = ["--segment-seconds", str(LONG_SEGMENT_SECONDS)] if hours else []
     run([sys.executable, os.path.join(SCRIPTS, "generate_theme_audio.py"),
          "--theme", theme["synth"]] + length +
-        ["--seed", str(seed), "--out", audio] + T.synth_args(theme))
+        ["--seed", str(seed), "--out", audio] + variant + T.synth_args(theme))
     run([sys.executable, os.path.join(SCRIPTS, "make_animated_video.py"),
          "--audio", audio, "--duration-seconds", str(duration),
          "--width", str(width), "--height", str(height),
          "--color", T.ACCENT_COLORS[key], "--icon", os.path.join(ch.brand, "icon.png"),
-         "--topic", T.topic_for(key)] + segment +
-        (["--variant", str(volume)] if volume else []) + ["--seed", str(seed), "--out", video])
+         "--topic", T.topic_for(key)] + segment + variant + ["--seed", str(seed), "--out", video])
     vol = ["--volume", str(volume)] if volume else []
     hrs = ["--hours", str(hours)] if hours else []
     run([sys.executable, ch.script("make_metadata.py"),

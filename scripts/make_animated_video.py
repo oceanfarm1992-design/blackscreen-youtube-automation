@@ -415,7 +415,8 @@ class _Glow:
 LAYER_CLASSES = {"motes": _Motes, "bands": _Bands, "ripples": _Ripples, "parallax": _Parallax}
 
 
-def frame_maker(duration_sec, iw, ih, color, seed, topic="neutral", periodic=False, variant=None):
+def frame_maker(duration_sec, iw, ih, color, seed, topic="neutral", periodic=False, variant=None,
+                dim=1.0):
     """(n_frames, frame(i) -> HxWx3 uint8, look). frame(n_frames) equals
     frame(0) when periodic -- that is what makes the loop seamless."""
     profile = TOPIC_PROFILES.get(topic, TOPIC_PROFILES["neutral"])
@@ -435,9 +436,10 @@ def frame_maker(duration_sec, iw, ih, color, seed, topic="neutral", periodic=Fal
         field = field[::-1, :]
     field_idx = np.ascontiguousarray((np.clip(field, 0, 1) * 255).astype(np.uint8))
     lut, hi_rgb, base_rgb = _palette(color, look)
+    lut = lut * dim  # dim < 1: a near-dark picture for sleep channels
     layer = LAYER_CLASSES[look["layer"]](iw, ih, lrng, topic, duration_sec, periodic)
     glow = _Glow(iw, ih, lrng, duration_sec, periodic) if look["glow"] else None
-    hi = (hi_rgb * look["strength"]).astype(np.float32)
+    hi = (hi_rgb * look["strength"] * dim).astype(np.float32)
     glow_k = float(np.mean(base_rgb) / max(1.0, np.mean(hi)) * 1.4)
     buf = np.empty((ih, iw, 3), np.float32)
 
@@ -456,8 +458,9 @@ def frame_maker(duration_sec, iw, ih, color, seed, topic="neutral", periodic=Fal
 
 
 def render_frames(out_pipe, duration_sec, iw, ih, color, seed, topic="neutral", periodic=False,
-                  variant=None):
-    n_frames, frame, look = frame_maker(duration_sec, iw, ih, color, seed, topic, periodic, variant)
+                  variant=None, dim=1.0):
+    n_frames, frame, look = frame_maker(duration_sec, iw, ih, color, seed, topic, periodic, variant,
+                                        dim)
     print(f"Look: {look}")
     for i in range(n_frames):
         out_pipe.write(frame(i).tobytes())
@@ -515,14 +518,14 @@ def loop_mux_command(segment_path, audio_path, duration_sec, out_path):
 
 
 def render(audio, duration, width, height, color, icon, topic, seed, out, periodic=False,
-           variant=None):
+           variant=None, dim=1.0):
     iw = _even(width * INTERNAL_SCALE)
     ih = _even(height * INTERNAL_SCALE)
     cmd = build_ffmpeg_command(audio, duration, width, height, out, iw, ih, icon, topic, periodic)
     print("Running:", " ".join(cmd))
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
     try:
-        render_frames(proc.stdin, duration, iw, ih, color, seed, topic, periodic, variant)
+        render_frames(proc.stdin, duration, iw, ih, color, seed, topic, periodic, variant, dim)
     finally:
         proc.stdin.close()
     ret = proc.wait()
@@ -549,6 +552,8 @@ def main():
     p.add_argument("--variant", type=int, default=None,
                    help="the upload's Vol. number: cycles the animated layer so two "
                         "consecutive uploads of a theme never share a look")
+    p.add_argument("--dim", type=float, default=1.0,
+                   help="overall brightness, 0..1 (e.g. 0.45 keeps a sleep channel near-dark)")
     p.add_argument("--out", default="animated.mp4")
     args = p.parse_args()
 
@@ -556,14 +561,14 @@ def main():
     if 0 < seg < args.duration_seconds:
         segment = args.out + ".segment.mp4"
         render(None, seg, args.width, args.height, args.color, args.icon, args.topic,
-               args.seed, segment, periodic=True, variant=args.variant)
+               args.seed, segment, periodic=True, variant=args.variant, dim=args.dim)
         cmd = loop_mux_command(segment, args.audio, args.duration_seconds, args.out)
         print("Running:", " ".join(cmd))
         subprocess.run(cmd, check=True)
         os.remove(segment)
     else:
         render(args.audio, args.duration_seconds, args.width, args.height, args.color,
-               args.icon, args.topic, args.seed, args.out, variant=args.variant)
+               args.icon, args.topic, args.seed, args.out, variant=args.variant, dim=args.dim)
     print(f"Wrote {args.out} ({args.duration_seconds:.0f}s, {args.width}x{args.height})")
 
 

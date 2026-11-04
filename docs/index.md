@@ -1,6 +1,6 @@
 # Meditated Sleeping
 
-Calm black-screen music for deep sleep, relaxation, and focus.
+Calm, dark-screen music for deep sleep, relaxation, and focus.
 
 This is the homepage for **Meditated Sleeping**, a personal, single-user automated tool
 that creates original ambient/calm-music videos (rain, deep sleep, nature sounds,

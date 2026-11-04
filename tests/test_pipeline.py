@@ -342,7 +342,11 @@ def test_every_look_loops_seamlessly(topic):
         assert seam < 0.5, f"{topic}/{look['layer']}: loop seam differs by {seam:.2f}"
 
 
-@pytest.mark.parametrize("folder", ANIMATED)
+def color_of(T, key):
+    return T.ACCENT_COLORS[key] if hasattr(T, "ACCENT_COLORS") else T.accent_for(key)
+
+
+@pytest.mark.parametrize("folder", ALL)
 def test_consecutive_uploads_of_a_theme_never_share_a_layer(folder):
     """The animated layer cycles with the Vol. number, so when a theme comes
     round again (in either format) it never looks like its last upload."""
@@ -350,27 +354,29 @@ def test_consecutive_uploads_of_a_theme_never_share_a_layer(folder):
     T = THEMES[folder]
     last = {}
     for d, slot, key, fmt, vol in scheduled_uploads(T, 730):
-        seed = int(d.strftime("%Y%m%d")) * 1000 + slot
+        seed = K.render_seed(T, int(d.strftime("%Y%m%d")) * 1000 + slot)
         layer = pick_look(seed, T.topic_for(key), vol)["layer"]
         assert last.get((key, fmt)) != layer, f"{key} {fmt} Vol. {vol} repeats layer {layer}"
         last[(key, fmt)] = layer
 
 
-@pytest.mark.parametrize("folder", ANIMATED)
+@pytest.mark.parametrize("folder", ALL)
 def test_two_uploads_of_a_theme_look_clearly_different(folder):
     """Not just different pixels: the same moment of two consecutive uploads
-    of a theme should differ visibly (mean difference > ~4% of full scale)."""
+    of a theme should differ visibly -- by more than 15% of the picture's own
+    brightness, so dark themes and the dim main channel are judged fairly."""
     from make_animated_video import frame_maker
     T = THEMES[folder]
     for theme in T.THEMES:
         key = theme["key"]
         frames = []
         for vol, seed in ((7, 20261105000), (8, 20261115000)):
-            n, frame, _ = frame_maker(10, 192, 108, T.ACCENT_COLORS[key], seed,
-                                      T.topic_for(key), variant=vol)
+            dim = getattr(T, "VISUAL_DIM", 1.0)
+            n, frame, _ = frame_maker(10, 192, 108, color_of(T, key), K.render_seed(T, seed),
+                                      T.topic_for(key), variant=vol, dim=dim)
             frames.append(frame(90).astype(int))
-        diff = np.abs(frames[0] - frames[1]).mean()
-        assert diff > 10, f"{folder}/{key}: consecutive uploads differ by only {diff:.1f}/255"
+        rel = np.abs(frames[0] - frames[1]).mean() / (np.mean(frames) + 1e-9)
+        assert rel > 0.15, f"{folder}/{key}: consecutive uploads differ by only {rel:.0%}"
 
 
 # --------------------------------------------------------------------------- #
@@ -425,3 +431,89 @@ def test_duplicate_check_never_blocks_an_upload_when_it_cannot_read():
     existing = U.recent_upload_titles(yt)
     assert existing is None
     assert not U.is_duplicate_title(existing, "anything")
+
+
+# --------------------------------------------------------------------------- #
+# Every video on every channel is its own render, and its music is its own.
+
+def test_render_seeds_are_unique_across_all_channels():
+    """Channels share date-based schedule seeds (and some share a music
+    preset); the per-channel render seed keeps every render distinct."""
+    seen = {}
+    for folder in ALL:
+        T = THEMES[folder]
+        for d, slot, key, fmt, vol in scheduled_uploads(T, 730):
+            s = K.render_seed(T, int(d.strftime("%Y%m%d")) * 1000 + slot)
+            assert s not in seen, f"{folder} {d} reuses the render seed of {seen[s]}"
+            seen[s] = (folder, d)
+
+
+def test_main_channel_is_no_longer_sold_as_a_black_screen():
+    T = THEMES["scripts"]
+    for theme in T.THEMES:
+        for fmt in ("short", "long"):
+            meta_title = titles("scripts", theme, fmt, 3)
+            assert "black" not in meta_title.lower(), meta_title
+        assert not any("black" in t.lower() for t in theme["tags"]), theme["key"]
+        assert "black" not in theme["description"].lower(), theme["key"]
+        assert T.topic_for(theme["key"]) in TOPIC_PROFILES
+        assert re.fullmatch(r"[0-9a-f]{6}", T.accent_for(theme["key"]))
+
+
+def test_consecutive_uploads_never_share_a_key_or_tape_speed():
+    n = len(G._TRANSPOSE_SEMITONES)
+    for vol in range(1, 200):
+        assert (vol * 3) % n != ((vol + 1) * 3) % n  # key index, as main() sets it
+        a = G.varispeed_semitones(np.random.default_rng(vol), vol)
+        b = G.varispeed_semitones(np.random.default_rng(vol + 1), vol + 1)
+        assert abs(a - b) > 0.2, (vol, a, b)
+
+
+def test_varispeed_keeps_the_length_and_shifts_the_pitch():
+    sr = G.SR
+    tone = lambda m: np.sin(2 * np.pi * 440.0 * np.arange(m) / sr)
+    out = G.varispeed(tone, sr * 2, 2.0)  # +2 semitones
+    assert len(out) == sr * 2
+    f = np.fft.rfftfreq(len(out), 1 / sr)[np.argmax(np.abs(np.fft.rfft(out)))]
+    assert abs(f - 440.0 * 2 ** (2 / 12)) < 1.0, f
+
+
+def _render_audio(tmp_path, name, *args):
+    import subprocess
+    import soundfile as sf
+    out = tmp_path / f"{name}.wav"
+    subprocess.run([sys.executable, os.path.join(SCRIPTS, "generate_theme_audio.py"),
+                    "--seconds", "6", "--out", str(out)] + [str(a) for a in args],
+                   check=True, capture_output=True)
+    return sf.read(str(out))[0]
+
+
+@pytest.mark.parametrize("synth_args", [
+    ["--theme", "creek_hollow"],
+    ["--theme", "sleeping", "--tone", "528", "--beat", "delta", "--beat-type", "binaural"],
+])
+def test_two_uploads_of_a_theme_have_different_music(tmp_path, synth_args):
+    a = _render_audio(tmp_path, "a", "--seed", 11, "--variant", 4, *synth_args)
+    b = _render_audio(tmp_path, "b", "--seed", 12, "--variant", 5, *synth_args)
+    corr = abs(np.corrcoef(a[:, 0], b[:, 0])[0, 1])
+    assert corr < 0.5, f"consecutive uploads correlate {corr:.2f}"
+
+
+def test_frequency_tracks_vary_but_keep_their_exact_tone(tmp_path):
+    """Pure-frequency tracks get a seed-varied texture under the tone; the
+    carrier itself must still dominate and stay exactly on frequency."""
+    args = ["--theme", "none", "--tone", "963", "--tone-soft", "--tone-gain", "0.14"]
+    a = _render_audio(tmp_path, "a", "--seed", 21, "--variant", 1, *args)
+    b = _render_audio(tmp_path, "b", "--seed", 22, "--variant", 2, *args)
+    for x in (a, b):
+        spec = np.abs(np.fft.rfft(x.mean(1))) ** 2
+        f = np.fft.rfftfreq(len(x), 1 / G.SR)
+        assert abs(f[np.argmax(spec)] - 963.0) < 0.5
+        assert spec[(f > 958) & (f < 968)].sum() / spec.sum() > 0.6
+    # the texture under the tone differs between uploads
+    def texture(x):
+        spec = np.abs(np.fft.rfft(x.mean(1)))
+        f = np.fft.rfftfreq(len(x), 1 / G.SR)
+        spec[(f > 900) & (f < 1030)] = 0
+        return spec / np.linalg.norm(spec)
+    assert texture(a) @ texture(b) < 0.9

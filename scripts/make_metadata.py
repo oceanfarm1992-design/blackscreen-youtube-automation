@@ -92,7 +92,8 @@ def build_metadata(theme: dict, fmt: str, hours: int, volume: int | None = None)
     if fmt == "short":
         hashtags += " #shorts"
     description = (
-        f"{lead} on a calm black screen.\n\n"
+        f"{lead} over a dim, slow-moving ambient animation — dark enough to sleep to, "
+        f"and generated fresh for this video.\n\n"
         f"{theme['description']}\n\n"
         f"\U0001F3A7 How to use: play at a low, comfortable volume to fall asleep, "
         f"study, meditate, or relax — leave it on all night for uninterrupted rest.\n\n"
