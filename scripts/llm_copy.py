@@ -25,7 +25,7 @@ import urllib.request
 
 API = "https://openrouter.ai/api/v1"
 TIMEOUT = 45
-MAX_MODELS_TRIED = 5
+MAX_MODELS_TRIED = 8  # free models are often busy (HTTP 429): keep trying others
 
 # Free models that aren't general chat models (or are tiny) write poor prose.
 _SKIP = re.compile(r"code|coder|embed|vision|-vl\b|guard|ocr|image|audio|tts|whisper|"
@@ -86,8 +86,10 @@ def free_models(models):
     """Ids of the free text models in a /models listing, best first."""
     ids = []
     for m in models:
+        # text-only output: music/image models (e.g. google/lyria-*) are free too
         mod = (m.get("architecture") or {}).get("output_modalities") or ["text"]
-        if _is_free(m) and "text" in mod and m.get("id") and not _SKIP.search(m["id"]):
+        if (_is_free(m) and list(mod) == ["text"] and m.get("id")
+                and not _SKIP.search(m["id"]) and "lyria" not in m["id"].lower()):
             ids.append(m["id"])
 
     def rank(mid):
