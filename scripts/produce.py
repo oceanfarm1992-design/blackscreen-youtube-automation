@@ -165,6 +165,9 @@ def produce_one(theme, fmt, out_dir, hours, seed, run_date, volume=None):
         run([sys.executable, mm, "--theme", key, "--format", "long", "--hours", str(hours),
              "--out", meta] + vol)
 
+    import llm_copy  # optional unique opening paragraph (OPENROUTER_API_KEY)
+    llm_copy.enrich_metadata(meta, T.BRAND_NAME, theme, fmt, volume, seed)
+
     # Long-form gets this upload's own version of the per-theme scenic
     # thumbnail. Shorts use an auto-selected video frame — skip the custom
     # thumbnail to save API quota (thumbnails.set costs 50 units).

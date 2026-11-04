@@ -109,6 +109,9 @@ jobs:
           SLOT: ${{ steps.slot.outputs.slot }}
           RUN_DATE: ${{ steps.slot.outputs.date }}
           RUN_ID: ${{ github.run_id }}
+          # Optional: a free OpenRouter model writes each upload's opening
+          # description paragraph (scripts/llm_copy.py). Unset = standard text.
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           HOURS: ${{ github.event.inputs.hours }}
         run: |
           for n in "$SHORTS" "$LONGS" "$HOURS"; do

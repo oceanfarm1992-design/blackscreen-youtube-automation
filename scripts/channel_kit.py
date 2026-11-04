@@ -362,6 +362,8 @@ def produce_one(ch, theme, fmt, out_dir, seed, run_date, volume=None, hours=None
     hrs = ["--hours", str(hours)] if hours else []
     run([sys.executable, ch.script("make_metadata.py"),
          "--theme", key, "--format", fmt, "--out", meta] + vol + hrs)
+    import llm_copy  # optional unique opening paragraph (OPENROUTER_API_KEY)
+    llm_copy.enrich_metadata(meta, T.BRAND_NAME, theme, fmt, volume, seed)
 
     # Features get their own thumbnail, rendered from this upload's seed. Shorts
     # use an auto-selected video frame -- skip the custom thumbnail to save quota.

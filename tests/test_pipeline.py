@@ -517,3 +517,79 @@ def test_frequency_tracks_vary_but_keep_their_exact_tone(tmp_path):
         spec[(f > 900) & (f < 1030)] = 0
         return spec / np.linalg.norm(spec)
     assert texture(a) @ texture(b) < 0.9
+
+
+# --------------------------------------------------------------------------- #
+# Optional OpenRouter description paragraph: free models only, validated,
+# and never able to block a video.
+import llm_copy as L  # noqa: E402
+
+
+def test_only_free_text_models_are_used_best_first():
+    models = [
+        {"id": "openai/gpt-5", "pricing": {"prompt": "0.000002", "completion": "0.00001"}},
+        {"id": "some/tiny-model:free", "pricing": {"prompt": "0", "completion": "0"}},
+        {"id": "meta-llama/llama-3.3-70b-instruct:free", "pricing": {"prompt": "0", "completion": "0"}},
+        {"id": "x/image-gen:free", "pricing": {"prompt": "0", "completion": "0"},
+         "architecture": {"output_modalities": ["image"]}},
+    ]
+    assert L.free_models(models) == ["meta-llama/llama-3.3-70b-instruct:free", "some/tiny-model:free"]
+
+
+def test_model_text_is_validated():
+    good = ("Let the evening settle around you as soft water moves somewhere close by. "
+            "There is nothing left to do now but listen, breathe slowly, and let the "
+            "quiet carry you a little further from the day.")
+    assert L.clean(f'"{good}"') == good
+    assert L.clean("<think>plan</think> " + good) == good
+    assert L.clean(good + " Visit https://x.y") is None          # links
+    assert L.clean(good + " #sleep") is None                     # hashtags
+    assert L.clean(good + " This music cures insomnia.") is None  # health claims
+    assert L.clean(good + " Written by AI.") is None
+    assert L.clean("Too short.") is None
+
+
+def test_description_falls_back_when_openrouter_is_unavailable(tmp_path, monkeypatch):
+    meta = tmp_path / "m.json"
+    meta.write_text('{"title": "T", "description": "Lead.\\n\\nBody"}', encoding="utf-8")
+    original = meta.read_text(encoding="utf-8")
+    theme = THEMES["manor"].THEMES[0]
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    assert L.enrich_metadata(str(meta), "B", theme, "short", 3, 1) is False
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+
+    def boom(*a, **k):
+        raise OSError("network down")
+    monkeypatch.setattr(L, "_request", boom)
+    assert L.enrich_metadata(str(meta), "B", theme, "short", 3, 1) is False
+    assert meta.read_text(encoding="utf-8") == original
+
+
+def test_description_gets_the_paragraph_after_its_first_line(tmp_path, monkeypatch):
+    import json as _json
+    para = ("Let the evening settle around you as soft water moves somewhere close by. "
+            "There is nothing left to do now but listen, breathe slowly, and let the "
+            "quiet carry you a little further from the day.")
+    calls = []
+
+    def fake(path, key, body=None):
+        calls.append(path)
+        if path == "/models":
+            return {"data": [{"id": "a/m:free", "pricing": {"prompt": "0", "completion": "0"}}]}
+        return {"choices": [{"message": {"content": para}}]}
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    monkeypatch.setattr(L, "_request", fake)
+    meta = tmp_path / "m.json"
+    meta.write_text(_json.dumps({"title": "T", "description": "Lead.\n\nBody"}), encoding="utf-8")
+    assert L.enrich_metadata(str(meta), "B", THEMES["manor"].THEMES[0], "long", 3, 1)
+    out = _json.loads(meta.read_text(encoding="utf-8"))
+    assert out["description"] == f"Lead.\n\n{para}\n\nBody"
+    assert out["description_ai_model"] == "a/m:free"
+    assert calls == ["/models", "/chat/completions"]
+
+
+@pytest.mark.parametrize("wf", sorted(f for f in os.listdir(os.path.join(ROOT, ".github", "workflows"))
+                                      if f.startswith("publish")))
+def test_every_channel_workflow_passes_the_openrouter_key(wf):
+    text = open(os.path.join(ROOT, ".github", "workflows", wf), encoding="utf-8").read()
+    assert "OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}" in text
