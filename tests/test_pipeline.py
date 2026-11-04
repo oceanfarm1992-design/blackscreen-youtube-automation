@@ -538,6 +538,9 @@ def test_only_free_text_models_are_used_best_first():
     skip = [{"id": i, "pricing": {"prompt": "0", "completion": "0"}} for i in (
         "cohere/north-mini-code:free", "qwen/qwen3-coder:free", "x/text-embed:free",
         "meta-llama/llama-3.2-1b-instruct:free", "qwen/qwen2.5-vl-72b:free")]
+    # free music models (google/lyria-*) are not text writers either
+    skip.append({"id": "google/lyria-3-pro-preview", "pricing": {"prompt": "0", "completion": "0"},
+                 "architecture": {"output_modalities": ["text", "audio"]}})
     assert L.free_models(skip) == []
 
 
