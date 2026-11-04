@@ -725,6 +725,18 @@ def accent_for(theme_key: str) -> str:
     return "%02x%02x%02x" % tuple(int(round(c * 255)) for c in colorsys.hls_to_rgb(h, l, sat))
 
 
+# ---- ACE-Step 1.5 (AI music) blended with this repo's own Python audio -------
+# Shorts get their music from ACE-Step; the channel's own code adds the nature
+# bed and, for wellness themes, the exact tones (scripts/channel_kit.py
+# render_ai_music). Any failure falls back to the synth for that upload, and
+# every AI upload says so in its description and is flagged as synthetic.
+ACESTEP_FORMATS = ("short",)
+ACESTEP_STYLE = "slow soothing instrumental sleep music, soft pads and gentle piano"
+# Nature bed overrides where the visual topic is the wrong cue for the sound.
+ACESTEP_AMBIENCE = {"indian": "ambience_air", "night": "ambience_night",
+                    "waterfall": "stream", "forest": "ambience_meadow"}
+
+
 DESCRIPTION_FOOTER = (
     "\n\n— {brand} — {tagline}\n\n"
     "\U0001F3A7 Best experienced with headphones at a low, comfortable volume.\n"

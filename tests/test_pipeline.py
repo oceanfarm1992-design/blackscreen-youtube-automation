@@ -534,6 +534,14 @@ def test_only_free_text_models_are_used_best_first():
          "architecture": {"output_modalities": ["image"]}},
     ]
     assert L.free_models(models) == ["meta-llama/llama-3.3-70b-instruct:free", "some/tiny-model:free"]
+    # coding / embedding / tiny models are skipped: they write poor descriptions
+    skip = [{"id": i, "pricing": {"prompt": "0", "completion": "0"}} for i in (
+        "cohere/north-mini-code:free", "qwen/qwen3-coder:free", "x/text-embed:free",
+        "meta-llama/llama-3.2-1b-instruct:free", "qwen/qwen2.5-vl-72b:free")]
+    # free music models (google/lyria-*) are not text writers either
+    skip.append({"id": "google/lyria-3-pro-preview", "pricing": {"prompt": "0", "completion": "0"},
+                 "architecture": {"output_modalities": ["text", "audio"]}})
+    assert L.free_models(skip) == []
 
 
 def test_model_text_is_validated():
@@ -547,6 +555,11 @@ def test_model_text_is_validated():
     assert L.clean(good + " This music cures insomnia.") is None  # health claims
     assert L.clean(good + " Written by AI.") is None
     assert L.clean("Too short.") is None
+    # common wrappers around a good answer are removed, and rejections say why
+    assert L.clean("Here is the opening paragraph:\n\n" + good) == good
+    assert L.clean("<think>draft ideas</think>\n" + good + "\n\nWord count: 52") == good
+    assert L.validate(good + " Visit www.x.com.")[1] == "contains 'www.'"
+    assert L.validate("")[1] == "empty answer"
 
 
 def test_description_falls_back_when_openrouter_is_unavailable(tmp_path, monkeypatch):
@@ -606,3 +619,164 @@ def test_ai_music_benchmark_is_manual_and_has_no_youtube_access():
     assert list(triggers) == ["workflow_dispatch"]
     assert wf["permissions"] == {"contents": "read"}
     assert "_YT_" not in text and "YT_REFRESH" not in text and "upload_youtube" not in text
+
+
+# --------------------------------------------------------------------------- #
+# ACE-Step 1.5 trial (Moss & Manor Shorts): AI music with a synth fallback,
+# disclosed in the description and flagged as synthetic media.
+import acestep_audio as A  # noqa: E402
+
+
+def test_ai_music_is_on_for_shorts_on_every_channel():
+    import generate_theme_audio as G2
+    for folder in ALL:
+        T = THEMES[folder]
+        assert T.ACESTEP_FORMATS == ("short",), folder         # features stay with the synth
+        for theme in T.THEMES:
+            cap = K.acestep_caption(T, theme)
+            assert 20 < len(cap) < 400, (folder, theme["key"], cap)
+            bed = K.acestep_ambience(T, theme)
+            assert bed is None or bed in G2.AMBIENCE, (folder, theme["key"], bed)
+            if theme["synth"] == "none":
+                assert bed is None                                # the exact tone is our layer
+    T = THEMES["manor"]
+    assert set(T.ACESTEP_CAPTIONS) == {t["key"] for t in T.THEMES}
+
+
+def test_acestep_is_used_only_when_ready(tmp_path):
+    T = THEMES["manor"]
+    theme = T.THEMES[0]
+    binary = tmp_path / "ace-synth"
+    binary.write_text("")
+    ready = {"ACESTEP_BIN": str(binary), "ACESTEP_MODELS": str(tmp_path)}
+    assert K.acestep_wanted(T, theme, "short", ready)
+    assert not K.acestep_wanted(T, theme, "long", ready)            # features stay synth
+    assert not K.acestep_wanted(T, theme, "short", {})              # workflow didn't enable it
+    assert not K.acestep_wanted(T, theme, "short", {"ACESTEP_BIN": "/nope", "ACESTEP_MODELS": str(tmp_path)})
+    assert K.acestep_wanted(THEMES["aether"], THEMES["aether"].THEMES[0], "short", ready)
+    assert not K.acestep_wanted(THEMES["aether"], THEMES["aether"].THEMES[0], "long", ready)
+
+
+def test_acestep_request_is_instrumental_and_varies_per_upload():
+    reqs = [A.build_request("creek, guitar", 59, K.render_seed(THEMES["manor"], 20261105000 + i), v)
+            for i, v in enumerate(range(1, 30))]
+    for r in reqs:
+        assert r["lyrics"] == "[Instrumental]" and r["duration"] == 59.0
+        assert r["synth_model"].endswith(".gguf") and 58 <= r["bpm"] <= 80
+    keys = [r["keyscale"] for r in reqs]
+    assert all(a != b for a, b in zip(keys, keys[1:]))              # consecutive Vols: new key
+    assert len(set(keys[:12])) == 12                                # every key before a repeat
+    assert len({r["seed"] for r in reqs}) == len(reqs)
+
+
+def test_acestep_renders_are_checked_before_use():
+    sr = 48000
+    t = np.arange(59 * sr) / sr
+    good = np.stack([0.3 * np.sin(2 * np.pi * 220 * t)] * 2, axis=1)
+    assert A.check_audio(good, sr, 59) == []
+    assert A.check_audio(good[: 30 * sr], sr, 59)                   # too short
+    assert A.check_audio(good * 0, sr, 59)                          # silent
+    assert A.check_audio(np.clip(good * 20, -1, 1), sr, 59)         # clipped
+    out = A.finish(good, sr, 59)
+    assert len(out) == 59 * sr and abs(np.max(np.abs(out)) - 0.9) < 1e-6
+
+
+def test_ai_music_is_disclosed_and_flagged():
+    T = THEMES["manor"]
+    theme = T.THEMES[3]
+    plain = K.build_metadata(T, theme, "short", 5)["description"]
+    ai = K.build_metadata(T, theme, "short", 5, ai_music=True)["description"]
+    assert "no AI generation" in plain and "ACE-Step" not in plain
+    assert "no AI generation" not in ai and "AI music model" in ai and "ACE-Step 1.5" in ai
+    assert "our own Python pipeline" in ai                            # no layers named -> honest
+    layered = K.build_metadata(T, theme, "short", 5, ai_music="nature ambience")["description"]
+    assert "combined with nature ambience generated by our own Python audio code" in layered
+
+
+def test_upload_sets_synthetic_media_only_when_asked(fast_upload):
+    sent = []
+
+    class Capture(_YouTube):
+        def insert(self, **kw):
+            sent.append(kw["body"]["status"])
+            return self.request
+    U.upload_video(Capture(_Request([(None, {"id": "A"})])), "v.mp4", "t", "d", [], synthetic=True)
+    U.upload_video(Capture(_Request([(None, {"id": "B"})])), "v.mp4", "t", "d", [])
+    assert sent[0].get("containsSyntheticMedia") is True
+    assert "containsSyntheticMedia" not in sent[1]
+
+
+@pytest.mark.parametrize("wf", sorted(f for f in os.listdir(os.path.join(ROOT, ".github", "workflows"))
+                                      if f.startswith("publish")))
+def test_ace_step_steps_cannot_fail_any_channel_run(wf):
+    import yaml
+    doc = yaml.safe_load(open(os.path.join(ROOT, ".github", "workflows", wf), encoding="utf-8"))
+    steps = next(iter(doc["jobs"].values()))["steps"]
+    ace = [s for s in steps if str(s.get("name", "")).startswith("ACE-Step")]
+    assert len(ace) >= 6, wf
+    for s in ace:
+        assert s.get("continue-on-error") is True, s["name"]
+        assert "slot != '0'" in s.get("if", ""), s["name"]           # never on the feature slot
+    names = [s.get("name", "") for s in steps]
+    assert names.index("Produce video(s) + QC") > max(names.index(s["name"]) for s in ace)
+    assert "Keep the rendered videos (test runs with upload=false)" in names
+
+
+def test_manor_ai_music_gets_our_own_pitch_free_nature_bed():
+    T = THEMES["manor"]
+    assert set(T.ACESTEP_AMBIENCE) == {t["key"] for t in T.THEMES}
+    for preset in T.ACESTEP_AMBIENCE.values():
+        assert preset in G.AMBIENCE and preset in G.SYNTHS, preset
+    for preset in ("ambience_rain", "ambience_drips", "ambience_meadow", "ambience_wind_thunder"):
+        x = G.SYNTHS[preset](G.SR * 15, np.random.default_rng(1))  # > longest event (thunder 7 s)
+        assert np.isfinite(x).all() and np.sqrt(np.mean(x ** 2)) > 0.01, preset
+
+
+def test_bed_sits_under_the_music_at_a_per_upload_level():
+    sr = 48000
+    t = np.arange(20 * sr) / sr
+    music = np.stack([0.3 * np.sin(2 * np.pi * 196 * t)] * 2, axis=1)
+    bed = np.random.default_rng(0).normal(0, 0.2, (int(20 * 44100), 2))
+    levels = set()
+    for seed in (101, 202, 303, 404):
+        out = A.mix_with_bed(music, sr, bed, 44100, seed)
+        assert out.shape == music.shape
+        added = out - music
+        rel_db = 20 * np.log10(np.sqrt(np.mean(added ** 2)) / np.sqrt(np.mean(music ** 2)))
+        assert abs(rel_db - A.bed_level_db(seed)) < 3.0, (seed, rel_db)
+        assert -14 <= A.bed_level_db(seed) <= -7
+        levels.add(A.bed_level_db(seed))
+    assert len(levels) > 1
+
+
+def test_ai_disclosure_mentions_our_own_ambience():
+    T = THEMES["manor"]
+    ai = K.build_metadata(T, T.THEMES[0], "short", 2, ai_music="nature ambience")["description"]
+    assert "ACE-Step 1.5" in ai and "our own Python audio code" in ai and "no AI generation" not in ai
+    # every channel's footer gets the disclosure in place of its own music line
+    for folder in ANIMATED:
+        f = K.footer(THEMES[folder], "nature ambience")
+        assert f.count("\U0001F3B5") == 1 and "ACE-Step 1.5" in f and "composed algorithmically" not in f
+    main = load("scripts", "make_metadata", "scripts_meta_ai")
+    sys.modules["themes"] = THEMES["scripts"]
+    m = main.build_metadata(THEMES["scripts"].THEMES[0], "short", 10, 3, ai_music="nature ambience")
+    assert "ACE-Step 1.5" in m["description"] and "with the help of AI" not in m["description"]
+    plain = main.build_metadata(THEMES["scripts"].THEMES[0], "short", 10, 3)
+    assert "ACE-Step" not in plain["description"]
+
+
+
+def test_wellness_tones_stay_exact_and_the_music_is_in_their_key():
+    assert K.key_root_for(528) == "C" and K.key_root_for(432) == "A" and K.key_root_for(741) == "F#"
+    sr = 48000
+    t = np.arange(10 * sr) / sr
+    music = np.stack([0.3 * np.sin(2 * np.pi * 330 * t)] * 2, axis=1)
+    tone = np.stack([0.1 * np.sin(2 * np.pi * 528 * np.arange(10 * 44100) / 44100)] * 2, axis=1)
+    lead = A.mix_tones(music, sr, tone, 44100, lead=True)
+    spec = np.abs(np.fft.rfft(lead[:, 0]))
+    f = np.fft.rfftfreq(len(lead), 1 / sr)
+    assert abs(f[np.argmax(spec)] - 528) < 0.5                      # the tone leads, exactly
+    under = A.mix_tones(music, sr, tone, 44100, lead=False)
+    assert abs(f[np.argmax(np.abs(np.fft.rfft(under[:, 0])))] - 330) < 0.5
+    r = A.build_request("x", 59, 1234, variant=4, key_root="C")
+    assert r["keyscale"] == "C major" and A.build_request("x", 59, 1234, 5, "C")["keyscale"] == "C minor"

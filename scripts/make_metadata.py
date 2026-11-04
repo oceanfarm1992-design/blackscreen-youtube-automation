@@ -12,6 +12,7 @@ import argparse
 import json
 import sys
 
+import channel_kit as K
 import themes as T
 
 # Windows consoles default to cp1252 and choke on emoji in titles; force UTF-8.
@@ -74,7 +75,8 @@ def pack_tags(theme: dict, fmt: str) -> list:
     return tags
 
 
-def build_metadata(theme: dict, fmt: str, hours: int, volume: int | None = None) -> dict:
+def build_metadata(theme: dict, fmt: str, hours: int, volume: int | None = None,
+                   ai_music: str | None = None) -> dict:
     if fmt == "short":
         title = theme["short_title"]
     else:
@@ -99,7 +101,7 @@ def build_metadata(theme: dict, fmt: str, hours: int, volume: int | None = None)
         f"study, meditate, or relax — leave it on all night for uninterrupted rest.\n\n"
         f"Perfect for {T.PERFECT_FOR}.\n\n"
         f"{hashtags}"
-        + T.DESCRIPTION_FOOTER.format(brand=T.BRAND_NAME, tagline=T.BRAND_TAGLINE)
+        + K.footer(T, ai_music)
     )
 
     tags = pack_tags(theme, fmt)
@@ -125,11 +127,17 @@ def main():
     p.add_argument("--hours", type=int, default=T.LONG_HOURS_DEFAULT)
     p.add_argument("--volume", type=int, default=None,
                    help="repeat number of this theme; adds 'Vol. N' to the title")
+    p.add_argument("--ai-music", action="store_true",
+                   help="the music was made with ACE-Step: disclose it in the description")
+    p.add_argument("--ai-layers", default="",
+                   help="what our own code added to the AI music, for the disclosure")
     p.add_argument("--out", default="metadata.json")
     args = p.parse_args()
 
     theme = T.resolve_theme(args.theme)
-    meta = build_metadata(theme, args.format, args.hours, args.volume)
+    meta = build_metadata(theme, args.format, args.hours, args.volume,
+                          ai_music=args.ai_layers if args.ai_music else None)
+    meta["containsSyntheticMedia"] = bool(args.ai_music)
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
 

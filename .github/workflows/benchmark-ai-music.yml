@@ -14,6 +14,15 @@ name: benchmark-ai-music
 #                  DiT-only (no language model), turbo DiT quantised to Q4_K_M
 #                  -- about 2.4 GB of model files, cached between runs.
 #   current      : this repo's own generator, for comparison.
+#
+# Shared model caches -- downloaded once, then restored by any workflow that
+# uses the same key AND path (caches made on main are visible to every branch;
+# caches made on another branch only to that branch). GitHub drops a cache not
+# used for 7 days; the repo holds up to 10 GB.
+#   models-hf-stable-audio-open-small-v1  ~/.cache/huggingface/hub   (~1.5 GB)
+#   models-acestep15-dit-turbo-q4km-v1    ~/.cache/ai-models/acestep15 (~2.4 GB)
+# Each is saved right after its download step, so a later failure (or a
+# timeout) never throws the download away.
 
 on:
   workflow_dispatch:
@@ -47,6 +56,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.10"   # stable-audio-tools pins pandas 2.0.2 etc.
+          cache: pip               # PyTorch + stable-audio-tools wheels, reused
+          cache-dependency-path: bench/*.txt
       - name: Check the Hugging Face token
         run: |
           if [ -z "$HF_TOKEN" ]; then
@@ -55,9 +66,35 @@ jobs:
           fi
       - name: Install (CPU-only PyTorch)
         run: |
-          pip install torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cpu
-          pip install stable-audio-tools==0.0.19 soundfile
+          # torch, torchaudio and torchvision must be one matching CPU set; the
+          # constraints file stops stable-audio-tools' deps from pulling newer ones.
+          pip install -r bench/torch-cpu.txt --index-url https://download.pytorch.org/whl/cpu
+          pip install -r bench/requirements-stable-audio.txt -c bench/torch-cpu.txt \
+            --extra-index-url https://download.pytorch.org/whl/cpu
           sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Restore model cache
+        id: model-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/huggingface/hub
+          key: models-hf-stable-audio-open-small-v1
+      - name: Download the model (first run only)
+        if: steps.model-cache.outputs.cache-hit != 'true'
+        run: |
+          # Model weights + config, and the T5 text encoder it builds on.
+          python - <<'EOF'
+          from huggingface_hub import snapshot_download
+          snapshot_download("stabilityai/stable-audio-open-small")
+          from stable_audio_tools import get_pretrained_model
+          get_pretrained_model("stabilityai/stable-audio-open-small")  # pulls T5 too
+          EOF
+          du -sh ~/.cache/huggingface/hub
+      - name: Save model cache
+        if: steps.model-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/huggingface/hub
+          key: models-hf-stable-audio-open-small-v1
       - name: Generate
         run: |
           case "$SECONDS_IN" in ''|*[!0-9]*) echo "seconds must be a whole number"; exit 1 ;; esac
@@ -100,18 +137,28 @@ jobs:
           cd acestep.cpp && mkdir -p build && cd build
           cmake .. -DGGML_BLAS=ON -DGGML_BLAS_VENDOR=OpenBLAS -DCMAKE_BUILD_TYPE=Release
           cmake --build . --config Release -j "$(nproc)"
-      - uses: actions/cache@v4
+      - name: Restore model cache
+        id: model-cache
+        uses: actions/cache/restore@v4
         with:
-          path: acestep.cpp/models
-          key: acestep15-gguf-dit-q4km-v1
-      - name: Download models (DiT turbo Q4_K_M + text encoder + VAE)
+          path: ~/.cache/ai-models/acestep15
+          key: models-acestep15-dit-turbo-q4km-v1
+      - name: Download models (first run only; DiT turbo Q4_K_M + text encoder + VAE)
+        if: steps.model-cache.outputs.cache-hit != 'true'
         run: |
           pip install -q "huggingface_hub[cli]"
-          cd acestep.cpp && mkdir -p models
+          mkdir -p ~/.cache/ai-models/acestep15
           for f in vae-BF16.gguf Qwen3-Embedding-0.6B-Q8_0.gguf acestep-v15-turbo-Q4_K_M.gguf; do
-            [ -f "models/$f" ] || hf download Serveurperso/ACE-Step-1.5-GGUF "$f" --local-dir models
+            hf download Serveurperso/ACE-Step-1.5-GGUF "$f" --local-dir ~/.cache/ai-models/acestep15
           done
-          du -sh models
+          rm -rf ~/.cache/ai-models/acestep15/.cache   # hf's download bookkeeping
+          du -sh ~/.cache/ai-models/acestep15
+      - name: Save model cache
+        if: steps.model-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/ai-models/acestep15
+          key: models-acestep15-dit-turbo-q4km-v1
       - name: Generate
         run: |
           case "$SECONDS_IN" in ''|*[!0-9]*) echo "seconds must be a whole number"; exit 1 ;; esac
@@ -119,7 +166,7 @@ jobs:
           python - <<'EOF'
           import json, os
           json.dump({
-              "synth_model": "acestep-v15-turbo-Q4_K_M",
+              "synth_model": "acestep-v15-turbo-Q4_K_M.gguf",  # registry key = file name
               "caption": os.environ["PROMPT"],
               "lyrics": "[Instrumental]",
               "bpm": 70, "keyscale": "D major", "timesignature": "4",
@@ -132,7 +179,8 @@ jobs:
           import os, resource, subprocess, sys, time
           t = time.time()
           # the tool's own log goes to the job log, not into this summary
-          subprocess.run(["acestep.cpp/build/ace-synth", "--models", "acestep.cpp/models",
+          models = os.path.expanduser("~/.cache/ai-models/acestep15")
+          subprocess.run(["acestep.cpp/build/ace-synth", "--models", models,
                           "--request", "out/acestep.json"], check=True, stdout=sys.stderr)
           took = time.time() - t
           peak_gb = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss / 1024 / 1024

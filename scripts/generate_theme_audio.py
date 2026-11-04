@@ -571,6 +571,62 @@ def synth_stream(n, rng):
 
 
 # --------------------------------------------------------------------------- #
+# Pitch-free nature beds. Mixed UNDER AI-generated music (scripts/
+# acestep_audio.py --bed), so they must carry no notes or chords that could
+# clash with the music's key -- only noise textures and short events.
+
+def ambience_rain(n, rng):
+    """Soft rain on leaves with an occasional far-off roll of thunder."""
+    rain = colored_noise(n, rng, tilt=0.9, highpass=450, lowpass=5500)
+    rain *= slow_env(n, rng, rate_hz=0.1, depth=0.2)
+    thunder = sprinkle(n, rng, count=max(1, n // (SR * 50)), make_event=_thunder_event)
+    return _norm(0.8 * rain + 0.35 * thunder, 0.9)
+
+
+def ambience_drips(n, rng):
+    """Slow drips echoing in stone, over faint air."""
+    air = colored_noise(n, rng, tilt=1.6, lowpass=1500) * 0.12
+    drops = reverb(_norm(_slow_drops(n, rng, mean_gap=2.6), 0.8), rng, decay=2.8, mix=0.4)
+    return _norm(air + drops, 0.9)
+
+
+def ambience_meadow(n, rng):
+    """Light breeze through grass and scattered birdsong."""
+    wind = colored_noise(n, rng, tilt=1.3, lowpass=1800) * slow_env(n, rng, rate_hz=0.05, depth=0.4)
+    birds = sprinkle(n, rng, count=max(3, n // (SR * 6)), make_event=_bird_event)
+    return _norm(0.5 * wind + birds, 0.9)
+
+
+def ambience_wind_thunder(n, rng):
+    """Soft wind with distant thunder far away."""
+    wind = colored_noise(n, rng, tilt=1.5, lowpass=1000) * slow_env(n, rng, rate_hz=0.05, depth=0.5)
+    thunder = sprinkle(n, rng, count=max(1, n // (SR * 40)), make_event=_thunder_event)
+    return _norm(0.7 * wind + 0.4 * thunder, 0.9)
+
+
+def ambience_air(n, rng):
+    """Dark, slowly swelling room air -- a near-silent bed for drone and
+    space themes that have no natural sound of their own."""
+    air = colored_noise(n, rng, tilt=1.9, lowpass=900)
+    air *= 0.55 + 0.45 * slow_env(n, rng, rate_hz=0.03, depth=1.0)
+    hiss = colored_noise(n, rng, tilt=1.0, highpass=2500, lowpass=7000) * 0.05
+    return _norm(air + hiss, 0.9)
+
+
+def ambience_night(n, rng):
+    """Summer night: soft air and crickets (the night synth without its pad)."""
+    amb = colored_noise(n, rng, tilt=1.8, lowpass=2000) * 0.28
+    crickets = sprinkle(n, rng, count=max(60, n // (SR // 10)), make_event=_cricket)
+    return _norm(amb + 0.5 * crickets, 0.9)
+
+
+# Beds that are safe under any key: the ones above plus the pad-free originals.
+AMBIENCE = ("ambience_rain", "ambience_drips", "ambience_meadow", "ambience_wind_thunder",
+            "ambience_air", "ambience_night", "stream", "wind", "rain_drops", "thunderstorm",
+            "ocean", "fireplace", "brown_noise", "white_noise", "pink_noise")
+
+
+# --------------------------------------------------------------------------- #
 # "Aether & Ash" theme synths (dark ambient / drone / focus / writing /
 # cinematic / sleep) -- built from the same genre-agnostic toolkit above.
 # --------------------------------------------------------------------------- #
@@ -1502,6 +1558,12 @@ SYNTHS = {
     "wind": synth_wind,
     "night": synth_night,
     "stream": synth_stream,
+    "ambience_rain": ambience_rain,
+    "ambience_drips": ambience_drips,
+    "ambience_meadow": ambience_meadow,
+    "ambience_wind_thunder": ambience_wind_thunder,
+    "ambience_air": ambience_air,
+    "ambience_night": ambience_night,
     # "Aether & Ash" dark-ambient/drone/focus themes
     "void_drone": synth_void_drone,
     "abyssal_silence": synth_abyssal_silence,

@@ -124,7 +124,8 @@ def is_duplicate_title(existing, title):
     return existing is not None and _norm_title(title) in existing
 
 
-def upload_video(youtube, video_path, title, description, tags, category_id="10", privacy="public"):
+def upload_video(youtube, video_path, title, description, tags, category_id="10", privacy="public",
+                 synthetic=False):
     body = {
         "snippet": {
             "title": title,
@@ -134,6 +135,9 @@ def upload_video(youtube, video_path, title, description, tags, category_id="10"
         },
         "status": {"privacyStatus": privacy},
     }
+    if synthetic:
+        # YouTube's "altered or synthetic content" disclosure (AI-made music).
+        body["status"]["containsSyntheticMedia"] = True
     # 64 MB chunks: hours-long features are multi-GB, and a transient error
     # then retries one chunk instead of the whole file.
     media = MediaFileUpload(video_path, chunksize=UPLOAD_CHUNK_BYTES, resumable=True,

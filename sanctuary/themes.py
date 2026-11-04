@@ -350,6 +350,17 @@ def topic_for(theme_key: str) -> str:
 
 # Truthful, non-AI disclosure: 100% algorithmic sound synthesis, no samples,
 # no AI generation.
+# ---- ACE-Step 1.5 (AI music) blended with this repo's own Python audio -------
+# Shorts get their music from ACE-Step; the channel's own code adds the nature
+# bed and, for wellness themes, the exact tones (scripts/channel_kit.py
+# render_ai_music). Any failure falls back to the synth for that upload, and
+# every AI upload says so in its description and is flagged as synthetic.
+ACESTEP_FORMATS = ("short",)
+ACESTEP_STYLE = "space ambient, sci-fi soundscape, slow synth pads"
+# Space themes: a dark, near-silent room-air bed (no wind, rain or fire in space).
+ACESTEP_BED_DEFAULT = "ambience_air"
+
+
 DESCRIPTION_FOOTER = (
     "\n\n— {brand} — {tagline}\n\n"
     "\U0001F3A7 Best experienced with headphones or a good speaker at a low volume.\n"

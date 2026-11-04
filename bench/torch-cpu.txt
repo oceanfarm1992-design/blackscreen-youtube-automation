@@ -1,0 +1,6 @@
+# One matching CPU-only PyTorch set (install from https://download.pytorch.org/whl/cpu).
+# Also used as a constraints file so other packages cannot pull newer ones.
+# >= 2.6 because current transformers (the T5 text encoder) refuses older torch.
+torch==2.8.0
+torchaudio==2.8.0
+torchvision==0.23.0
