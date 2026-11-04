@@ -55,8 +55,12 @@ jobs:
           fi
       - name: Install (CPU-only PyTorch)
         run: |
-          pip install torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cpu
-          pip install stable-audio-tools==0.0.19 soundfile
+          # torch, torchaudio and torchvision must be one matching CPU set; the
+          # constraints file stops stable-audio-tools' deps from pulling newer ones.
+          printf 'torch==2.5.1\ntorchaudio==2.5.1\ntorchvision==0.20.1\n' > torch-cpu.txt
+          pip install -r torch-cpu.txt --index-url https://download.pytorch.org/whl/cpu
+          pip install stable-audio-tools==0.0.19 soundfile -c torch-cpu.txt \
+            --extra-index-url https://download.pytorch.org/whl/cpu
           sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Generate
         run: |
@@ -119,7 +123,7 @@ jobs:
           python - <<'EOF'
           import json, os
           json.dump({
-              "synth_model": "acestep-v15-turbo-Q4_K_M",
+              "synth_model": "acestep-v15-turbo-Q4_K_M.gguf",  # registry key = file name
               "caption": os.environ["PROMPT"],
               "lyrics": "[Instrumental]",
               "bpm": 70, "keyscale": "D major", "timesignature": "4",
