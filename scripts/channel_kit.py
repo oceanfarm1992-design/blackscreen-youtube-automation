@@ -345,7 +345,8 @@ def produce_one(ch, theme, fmt, out_dir, seed, run_date, volume=None, hours=None
          "--audio", audio, "--duration-seconds", str(duration),
          "--width", str(width), "--height", str(height),
          "--color", T.ACCENT_COLORS[key], "--icon", os.path.join(ch.brand, "icon.png"),
-         "--topic", T.topic_for(key)] + segment + ["--seed", str(seed), "--out", video])
+         "--topic", T.topic_for(key)] + segment +
+        (["--variant", str(volume)] if volume else []) + ["--seed", str(seed), "--out", video])
     vol = ["--volume", str(volume)] if volume else []
     hrs = ["--hours", str(hours)] if hours else []
     run([sys.executable, ch.script("make_metadata.py"),
@@ -688,6 +689,9 @@ def publish_main(T):
 
     youtube = U.get_service(ch.secret_prefix)
     playlist_ids = {}  # title -> id, resolved once per run
+    # A title already on the channel (e.g. a manual run of a day the schedule
+    # also covers) is skipped, so the channel never shows the same video twice.
+    existing = U.recent_upload_titles(youtube)
 
     def add_long_to_playlist(man, video_id):
         pl = T.playlist_for(man["theme"])
@@ -714,11 +718,21 @@ def publish_main(T):
         meta = json.load(open(os.path.join(ROOT, man["metadata"]), encoding="utf-8"))
         video = os.path.join(ROOT, man["video"])
 
+        if U.is_duplicate_title(existing, meta["title"]):
+            print(f"Skipping {man['theme']} {man['format']}: '{meta['title']}' is already "
+                  "on the channel")
+            man["status"] = "skipped_duplicate"
+            with open(mpath, "w", encoding="utf-8") as f:
+                json.dump(man, f, ensure_ascii=False, indent=2)
+            continue
+
         print(f"Uploading {man['theme']} {man['format']} as {args.privacy}: {meta['title']}")
         video_id = U.upload_video(
             youtube, video, meta["title"], meta["description"], meta.get("tags", []),
             category_id=meta.get("categoryId", CATEGORY_MUSIC), privacy=args.privacy,
         )
+        if existing is not None:
+            existing.add(U._norm_title(meta["title"]))
         # Custom thumbnails need a phone-verified channel; without it the API
         # returns 403 -- never fail the upload over an optional extra.
         if man.get("thumbnail"):

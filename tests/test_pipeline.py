@@ -325,3 +325,103 @@ def test_noise_field_is_seed_unique():
     a = _noise_field(64, 36, np.random.default_rng(1))
     b = _noise_field(64, 36, np.random.default_rng(2))
     assert not np.allclose(a, b)
+
+
+# --------------------------------------------------------------------------- #
+# Visual variety: every upload has its own look, not just a reshuffled cloud.
+
+@pytest.mark.parametrize("topic", sorted(TOPIC_PROFILES))
+def test_every_look_loops_seamlessly(topic):
+    """Hours-long features loop an animated segment: the frame after the last
+    must match the first for every layer, or the loop point would jump."""
+    from make_animated_video import TOPIC_LAYERS, frame_maker
+    for v in range(len(TOPIC_LAYERS[topic])):
+        n, frame, look = frame_maker(20, 160, 90, "4a6a4a", 20261104000 + v, topic,
+                                     periodic=True, variant=v)
+        seam = np.abs(frame(0).astype(int) - frame(n).astype(int)).mean()
+        assert seam < 0.5, f"{topic}/{look['layer']}: loop seam differs by {seam:.2f}"
+
+
+@pytest.mark.parametrize("folder", ANIMATED)
+def test_consecutive_uploads_of_a_theme_never_share_a_layer(folder):
+    """The animated layer cycles with the Vol. number, so when a theme comes
+    round again (in either format) it never looks like its last upload."""
+    from make_animated_video import pick_look
+    T = THEMES[folder]
+    last = {}
+    for d, slot, key, fmt, vol in scheduled_uploads(T, 730):
+        seed = int(d.strftime("%Y%m%d")) * 1000 + slot
+        layer = pick_look(seed, T.topic_for(key), vol)["layer"]
+        assert last.get((key, fmt)) != layer, f"{key} {fmt} Vol. {vol} repeats layer {layer}"
+        last[(key, fmt)] = layer
+
+
+@pytest.mark.parametrize("folder", ANIMATED)
+def test_two_uploads_of_a_theme_look_clearly_different(folder):
+    """Not just different pixels: the same moment of two consecutive uploads
+    of a theme should differ visibly (mean difference > ~4% of full scale)."""
+    from make_animated_video import frame_maker
+    T = THEMES[folder]
+    for theme in T.THEMES:
+        key = theme["key"]
+        frames = []
+        for vol, seed in ((7, 20261105000), (8, 20261115000)):
+            n, frame, _ = frame_maker(10, 192, 108, T.ACCENT_COLORS[key], seed,
+                                      T.topic_for(key), variant=vol)
+            frames.append(frame(90).astype(int))
+        diff = np.abs(frames[0] - frames[1]).mean()
+        assert diff > 10, f"{folder}/{key}: consecutive uploads differ by only {diff:.1f}/255"
+
+
+# --------------------------------------------------------------------------- #
+# Duplicate guard: a title already on the channel is never uploaded again.
+
+class _Exec:
+    def __init__(self, result):
+        self.result = result
+
+    def execute(self):
+        if isinstance(self.result, Exception):
+            raise self.result
+        return self.result
+
+
+class _Channel:
+    """Fake client: channels().list -> uploads playlist; playlistItems pages."""
+    def __init__(self, pages, channels=None):
+        self.pages, self.channels_result = list(pages), channels
+
+    def channels(self):
+        return self
+
+    def playlistItems(self):
+        return self
+
+    def list(self, **kw):
+        if "mine" in kw:
+            return _Exec(self.channels_result or
+                         {"items": [{"contentDetails": {"relatedPlaylists": {"uploads": "UU1"}}}]})
+        return _Exec(self.pages.pop(0))
+
+    def list_next(self, req, res):
+        return _Exec(self.pages.pop(0)) if self.pages else None
+
+
+def _page(*titles):
+    return {"items": [{"snippet": {"title": t}} for t in titles]}
+
+
+def test_duplicate_titles_are_detected_across_pages():
+    yt = _Channel([_page("Creek Hollow Vol. 6 #shorts"), _page("Creek  Hollow Vol. 7 #Shorts")])
+    existing = U.recent_upload_titles(yt)
+    assert U.is_duplicate_title(existing, "Creek Hollow Vol. 7 #shorts")
+    assert not U.is_duplicate_title(existing, "Creek Hollow Vol. 8 #shorts")
+
+
+def test_duplicate_check_never_blocks_an_upload_when_it_cannot_read():
+    """Upload-only tokens get a 403 on channels.list: the check must fail open."""
+    from googleapiclient.errors import HttpError
+    yt = _Channel([], channels=HttpError(_Resp(403), b"insufficientPermissions"))
+    existing = U.recent_upload_titles(yt)
+    assert existing is None
+    assert not U.is_duplicate_title(existing, "anything")

@@ -86,6 +86,44 @@ def add_to_playlist(youtube, playlist_id, video_id):
     }).execute()
 
 
+def _norm_title(title):
+    return " ".join(title.split()).casefold()
+
+
+def recent_upload_titles(youtube, max_items=200):
+    """Normalised titles of the channel's newest uploads, or None if they
+    can't be read. Costs 1 unit for channels.list + 1 per 50 videos.
+
+    Needs the 'youtube' scope: a token minted with only 'youtube.upload' gets
+    a 403 here, which returns None -- the caller then uploads as before
+    instead of blocking the day's video."""
+    try:
+        res = youtube.channels().list(part="contentDetails", mine=True).execute()
+        items = res.get("items", [])
+        if not items:
+            return set()
+        uploads = items[0]["contentDetails"]["relatedPlaylists"]["uploads"]
+        titles = set()
+        req = youtube.playlistItems().list(part="snippet", playlistId=uploads, maxResults=50)
+        seen = 0
+        while req is not None and seen < max_items:
+            res = req.execute()
+            for it in res.get("items", []):
+                titles.add(_norm_title(it["snippet"]["title"]))
+                seen += 1
+            req = youtube.playlistItems().list_next(req, res)
+        return titles
+    except Exception as e:  # never let the safety check itself stop an upload
+        print(f"  ! couldn't read recent uploads to check for duplicates: {e}")
+        return None
+
+
+def is_duplicate_title(existing, title):
+    """True if `title` is already on the channel. `existing` is what
+    recent_upload_titles returned (None = unknown -> not a duplicate)."""
+    return existing is not None and _norm_title(title) in existing
+
+
 def upload_video(youtube, video_path, title, description, tags, category_id="10", privacy="public"):
     body = {
         "snippet": {
