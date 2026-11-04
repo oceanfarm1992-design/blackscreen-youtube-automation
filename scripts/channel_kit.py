@@ -126,7 +126,8 @@ def fit_title(title, limit=100):
 
 
 AI_MUSIC_LINE = ("\U0001F3B5 The music in this video was generated with ACE-Step 1.5, an "
-                 "open-source AI music model, and is unique to this upload.")
+                 "open-source AI music model, and mixed with nature ambience synthesized by "
+                 "our own software — the blend is unique to this upload.")
 
 
 def footer(T, ai_music=False):
@@ -385,10 +386,23 @@ def produce_one(ch, theme, fmt, out_dir, seed, run_date, volume=None, hours=None
     segment = ["--segment-seconds", str(LONG_SEGMENT_SECONDS)] if hours else []
     engine = "synth"
     if acestep_wanted(T, theme, fmt):
+        # The channel's own synthesized nature bed (pitch-free, so it never
+        # clashes with the music's key) is mixed under the AI music.
+        bed = f"{stem}_bed.wav"
+        bed_args = []
+        preset = getattr(T, "ACESTEP_AMBIENCE", {}).get(key)
+        if preset:
+            try:
+                run([sys.executable, os.path.join(SCRIPTS, "generate_theme_audio.py"),
+                     "--theme", preset, "--seconds", str(duration),
+                     "--seed", str(seed), "--out", bed] + variant)
+                bed_args = ["--bed", bed]
+            except subprocess.CalledProcessError:
+                print("  ! nature bed failed; ACE-Step music without it")
         try:
             run([sys.executable, os.path.join(SCRIPTS, "acestep_audio.py"),
                  "--caption", T.ACESTEP_CAPTIONS[key], "--seconds", str(duration),
-                 "--seed", str(seed), "--out", audio] + variant)
+                 "--seed", str(seed), "--out", audio] + variant + bed_args)
             engine = "acestep"
         except subprocess.CalledProcessError:
             print("  ! ACE-Step render failed; using the synth for this upload")

@@ -700,3 +700,36 @@ def test_manor_workflow_ace_step_steps_cannot_fail_the_run():
         assert "slot != '0'" in s.get("if", ""), s["name"]           # never on the feature slot
     names = [s.get("name", "") for s in steps]
     assert names.index("Produce video(s) + QC") > max(names.index(s["name"]) for s in ace)
+
+
+def test_manor_ai_music_gets_our_own_pitch_free_nature_bed():
+    T = THEMES["manor"]
+    assert set(T.ACESTEP_AMBIENCE) == {t["key"] for t in T.THEMES}
+    for preset in T.ACESTEP_AMBIENCE.values():
+        assert preset in G.AMBIENCE and preset in G.SYNTHS, preset
+    for preset in ("ambience_rain", "ambience_drips", "ambience_meadow", "ambience_wind_thunder"):
+        x = G.SYNTHS[preset](G.SR * 15, np.random.default_rng(1))  # > longest event (thunder 7 s)
+        assert np.isfinite(x).all() and np.sqrt(np.mean(x ** 2)) > 0.01, preset
+
+
+def test_bed_sits_under_the_music_at_a_per_upload_level():
+    sr = 48000
+    t = np.arange(20 * sr) / sr
+    music = np.stack([0.3 * np.sin(2 * np.pi * 196 * t)] * 2, axis=1)
+    bed = np.random.default_rng(0).normal(0, 0.2, (int(20 * 44100), 2))
+    levels = set()
+    for seed in (101, 202, 303, 404):
+        out = A.mix_with_bed(music, sr, bed, 44100, seed)
+        assert out.shape == music.shape
+        added = out - music
+        rel_db = 20 * np.log10(np.sqrt(np.mean(added ** 2)) / np.sqrt(np.mean(music ** 2)))
+        assert abs(rel_db - A.bed_level_db(seed)) < 3.0, (seed, rel_db)
+        assert -14 <= A.bed_level_db(seed) <= -7
+        levels.add(A.bed_level_db(seed))
+    assert len(levels) > 1
+
+
+def test_ai_disclosure_mentions_our_own_ambience():
+    T = THEMES["manor"]
+    ai = K.build_metadata(T, T.THEMES[0], "short", 2, ai_music=True)["description"]
+    assert "ACE-Step 1.5" in ai and "our own software" in ai and "no AI generation" not in ai

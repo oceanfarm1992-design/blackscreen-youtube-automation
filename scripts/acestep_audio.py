@@ -72,6 +72,38 @@ def check_audio(x, sr, seconds):
     return problems
 
 
+def _resample(x, sr_from, sr_to):
+    if sr_from == sr_to:
+        return x
+    n = int(round(len(x) * sr_to / sr_from))
+    t_old = np.arange(len(x)) / sr_from
+    t_new = np.arange(n) / sr_to
+    return np.stack([np.interp(t_new, t_old, x[:, c]) for c in range(x.shape[1])], axis=1)
+
+
+def bed_level_db(seed):
+    """How far under the music the nature bed sits for this upload: -14..-7 dB."""
+    return -14.0 + (int(seed) // 3 % 15) * 0.5
+
+
+def mix_with_bed(music, sr, bed, bed_sr, seed):
+    """Lay this repo's own synthesized nature bed under the AI music: matched
+    to the music's loudness, set bed_level_db() below it, and slowly breathing
+    (+-2.5 dB over ~20-40 s) so the blend itself changes through the track."""
+    bed = _resample(bed, bed_sr, sr)
+    if bed.shape[1] == 1:
+        bed = np.repeat(bed, music.shape[1], axis=1)
+    n = len(music)
+    bed = np.resize(bed, (n, music.shape[1])) if len(bed) < n else bed[:n]
+    rms = lambda a: float(np.sqrt(np.mean(np.square(a)))) + 1e-9
+    gain = rms(music) / rms(bed) * 10 ** (bed_level_db(seed) / 20)
+    rng = np.random.default_rng(abs(int(seed)) + 17)
+    t = np.arange(n) / sr
+    period = rng.uniform(20, 40)
+    breathe = 10 ** (2.5 * np.sin(2 * np.pi * t / period + rng.uniform(0, 2 * np.pi)) / 20)
+    return music + bed * (gain * breathe)[:, None]
+
+
 def finish(x, sr, seconds, fade=1.5):
     """Exact length, gentle fades, peak 0.9."""
     n = int(round(seconds * sr))
@@ -92,6 +124,8 @@ def main():
     p.add_argument("--seconds", type=float, required=True)
     p.add_argument("--seed", type=int, required=True)
     p.add_argument("--variant", type=int, default=None)
+    p.add_argument("--bed", default=None,
+                   help="optional nature bed WAV (from generate_theme_audio.py) mixed under the music")
     p.add_argument("--out", required=True)
     args = p.parse_args()
     if not (args.bin and os.path.exists(args.bin) and args.models and os.path.isdir(args.models)):
@@ -108,8 +142,13 @@ def main():
     problems = check_audio(x, sr, args.seconds)
     if problems:
         sys.exit("ACE-Step render rejected: " + "; ".join(problems))
+    label = "ACE-Step 1.5"
+    if args.bed and os.path.exists(args.bed):
+        bed, bed_sr = sf.read(args.bed, always_2d=True)
+        x = mix_with_bed(x, sr, bed, bed_sr, args.seed)
+        label += f" + own nature bed at {bed_level_db(args.seed):.1f} dB"
     sf.write(args.out, finish(x, sr, args.seconds), sr)
-    print(f"Wrote {args.out} ({args.seconds:.0f}s, {sr} Hz, ACE-Step 1.5)")
+    print(f"Wrote {args.out} ({args.seconds:.0f}s, {sr} Hz, {label})")
 
 
 if __name__ == "__main__":

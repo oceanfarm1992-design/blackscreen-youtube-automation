@@ -352,6 +352,22 @@ ACESTEP_CAPTIONS = {
 }
 
 
+# The channel's own synthesized nature bed mixed under each theme's AI music
+# (pitch-free presets only: generate_theme_audio.AMBIENCE).
+ACESTEP_AMBIENCE = {
+    "greenhouse_ruins": "ambience_drips",
+    "rainy_cottage_garden": "ambience_rain",
+    "misty_forest_floor": "wind",
+    "creek_hollow": "stream",
+    "ancient_grove": "wind",
+    "thunder_garden": "ambience_rain",
+    "mossy_stonework": "ambience_drips",
+    "wildflower_meadow": "ambience_meadow",
+    "fernwood_path": "stream",
+    "twilight_greenhouse": "ambience_wind_thunder",
+}
+
+
 DESCRIPTION_FOOTER = (
     "\n\n— {brand} — {tagline}\n\n"
     "\U0001F3A7 Best experienced with headphones or a good speaker at a low volume.\n"
