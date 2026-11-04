@@ -1,0 +1,3 @@
+# Stable Audio Open Small benchmark (install with -c bench/torch-cpu.txt)
+stable-audio-tools==0.0.19
+soundfile

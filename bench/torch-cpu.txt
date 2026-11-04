@@ -1,0 +1,5 @@
+# One matching CPU-only PyTorch set (install from https://download.pytorch.org/whl/cpu).
+# Also used as a constraints file so other packages cannot pull newer ones.
+torch==2.5.1
+torchaudio==2.5.1
+torchvision==0.20.1
