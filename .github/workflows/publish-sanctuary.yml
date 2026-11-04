@@ -68,9 +68,9 @@ jobs:
       SANCTUARY_YT_CLIENT_SECRET: ${{ secrets.SANCTUARY_YT_CLIENT_SECRET }}
       SANCTUARY_YT_REFRESH_TOKEN: ${{ secrets.SANCTUARY_YT_REFRESH_TOKEN }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
@@ -147,7 +147,7 @@ jobs:
 
       - name: Upload metadata, manifests + thumbnails as artifacts
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: metadata-sanctuary-${{ github.run_id }}
           path: |
