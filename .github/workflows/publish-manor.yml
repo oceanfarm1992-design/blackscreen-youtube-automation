@@ -225,6 +225,17 @@ jobs:
         run: |
           python manor/publish_queue.py --out-dir out --privacy "$PRIVACY"
 
+      - name: Keep the rendered videos (test runs with upload=false)
+        if: always() && github.event.inputs.upload == 'false'
+        uses: actions/upload-artifact@v5
+        with:
+          name: videos-manor-${{ github.run_id }}
+          path: |
+            out/*.mp4
+            out/*_meta.json
+          retention-days: 7
+          if-no-files-found: warn
+
       - name: Upload metadata, manifests + thumbnails as artifacts
         if: always()
         uses: actions/upload-artifact@v5

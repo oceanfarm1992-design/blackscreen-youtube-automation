@@ -25,7 +25,11 @@ import urllib.request
 
 API = "https://openrouter.ai/api/v1"
 TIMEOUT = 45
-MAX_MODELS_TRIED = 3
+MAX_MODELS_TRIED = 5
+
+# Free models that aren't general chat models (or are tiny) write poor prose.
+_SKIP = re.compile(r"code|coder|embed|vision|-vl\b|guard|ocr|image|audio|tts|whisper|"
+                   r"math|reward|\b0\.[0-9]+b\b|\b[1-3]b\b", re.I)
 
 # Tried first when free; anything else free is a fallback.
 PREFERRED = ("llama-3.3-70b", "deepseek", "gemini", "qwen3", "qwen", "mistral", "gemma", "llama")
@@ -83,7 +87,7 @@ def free_models(models):
     ids = []
     for m in models:
         mod = (m.get("architecture") or {}).get("output_modalities") or ["text"]
-        if _is_free(m) and "text" in mod and m.get("id"):
+        if _is_free(m) and "text" in mod and m.get("id") and not _SKIP.search(m["id"]):
             ids.append(m["id"])
 
     def rank(mid):
@@ -155,8 +159,10 @@ def intro_for(brand, theme, fmt, volume, title, seed, key=None):
             if text:
                 return text, model
             last = f"{model}: answer failed validation"
+            print(f"  ({last})")
         except urllib.error.HTTPError as e:
             last = f"{model}: HTTP {e.code}"  # 429 = free-tier limit; try the next model
+            print(f"  ({last})")
         except Exception as e:
             last = f"{model}: {e}"
     return None, last

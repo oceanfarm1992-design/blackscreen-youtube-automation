@@ -534,6 +534,11 @@ def test_only_free_text_models_are_used_best_first():
          "architecture": {"output_modalities": ["image"]}},
     ]
     assert L.free_models(models) == ["meta-llama/llama-3.3-70b-instruct:free", "some/tiny-model:free"]
+    # coding / embedding / tiny models are skipped: they write poor descriptions
+    skip = [{"id": i, "pricing": {"prompt": "0", "completion": "0"}} for i in (
+        "cohere/north-mini-code:free", "qwen/qwen3-coder:free", "x/text-embed:free",
+        "meta-llama/llama-3.2-1b-instruct:free", "qwen/qwen2.5-vl-72b:free")]
+    assert L.free_models(skip) == []
 
 
 def test_model_text_is_validated():
