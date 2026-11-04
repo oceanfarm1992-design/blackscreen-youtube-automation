@@ -41,6 +41,16 @@ LONG_AUDIO_LOOP_SECONDS = 900
 TAG_CHAR_LIMIT = 480
 
 
+def render_seed(T, seed):
+    """The seed a channel actually renders with: the schedule's seed mixed
+    with the channel's name. Every channel uses the same date-based seeds, so
+    without this two channels sharing a music preset (e.g. 'sleeping') would
+    render byte-identical audio on the same day. Deterministic, 56-bit."""
+    import hashlib
+    h = hashlib.sha256(f"{T.BRAND_NAME}|{int(seed)}".encode()).digest()
+    return int.from_bytes(h[:7], "big")
+
+
 def utf8_stdout():
     """Windows consoles default to cp1252 and choke on emoji in titles."""
     if hasattr(sys.stdout, "reconfigure"):
@@ -320,6 +330,8 @@ def long_hours_for(T, d):
 def produce_one(ch, theme, fmt, out_dir, seed, run_date, volume=None, hours=None):
     T = ch.T
     key = theme["key"]
+    seed = render_seed(T, seed)
+    variant = ["--variant", str(volume)] if volume else []
     hours = hours if fmt == "long" else None
     if fmt == "short":
         duration = SHORT_SECONDS
@@ -340,16 +352,18 @@ def produce_one(ch, theme, fmt, out_dir, seed, run_date, volume=None, hours=None
     segment = ["--segment-seconds", str(LONG_SEGMENT_SECONDS)] if hours else []
     run([sys.executable, os.path.join(SCRIPTS, "generate_theme_audio.py"),
          "--theme", theme["synth"]] + length +
-        ["--seed", str(seed), "--out", audio] + T.synth_args(theme))
+        ["--seed", str(seed), "--out", audio] + variant + T.synth_args(theme))
     run([sys.executable, os.path.join(SCRIPTS, "make_animated_video.py"),
          "--audio", audio, "--duration-seconds", str(duration),
          "--width", str(width), "--height", str(height),
          "--color", T.ACCENT_COLORS[key], "--icon", os.path.join(ch.brand, "icon.png"),
-         "--topic", T.topic_for(key)] + segment + ["--seed", str(seed), "--out", video])
+         "--topic", T.topic_for(key)] + segment + variant + ["--seed", str(seed), "--out", video])
     vol = ["--volume", str(volume)] if volume else []
     hrs = ["--hours", str(hours)] if hours else []
     run([sys.executable, ch.script("make_metadata.py"),
          "--theme", key, "--format", fmt, "--out", meta] + vol + hrs)
+    import llm_copy  # optional unique opening paragraph (OPENROUTER_API_KEY)
+    llm_copy.enrich_metadata(meta, T.BRAND_NAME, theme, fmt, volume, seed)
 
     # Features get their own thumbnail, rendered from this upload's seed. Shorts
     # use an auto-selected video frame -- skip the custom thumbnail to save quota.
@@ -688,6 +702,9 @@ def publish_main(T):
 
     youtube = U.get_service(ch.secret_prefix)
     playlist_ids = {}  # title -> id, resolved once per run
+    # A title already on the channel (e.g. a manual run of a day the schedule
+    # also covers) is skipped, so the channel never shows the same video twice.
+    existing = U.recent_upload_titles(youtube)
 
     def add_long_to_playlist(man, video_id):
         pl = T.playlist_for(man["theme"])
@@ -714,11 +731,21 @@ def publish_main(T):
         meta = json.load(open(os.path.join(ROOT, man["metadata"]), encoding="utf-8"))
         video = os.path.join(ROOT, man["video"])
 
+        if U.is_duplicate_title(existing, meta["title"]):
+            print(f"Skipping {man['theme']} {man['format']}: '{meta['title']}' is already "
+                  "on the channel")
+            man["status"] = "skipped_duplicate"
+            with open(mpath, "w", encoding="utf-8") as f:
+                json.dump(man, f, ensure_ascii=False, indent=2)
+            continue
+
         print(f"Uploading {man['theme']} {man['format']} as {args.privacy}: {meta['title']}")
         video_id = U.upload_video(
             youtube, video, meta["title"], meta["description"], meta.get("tags", []),
             category_id=meta.get("categoryId", CATEGORY_MUSIC), privacy=args.privacy,
         )
+        if existing is not None:
+            existing.add(U._norm_title(meta["title"]))
         # Custom thumbnails need a phone-verified channel; without it the API
         # returns 403 -- never fail the upload over an optional extra.
         if man.get("thumbnail"):

@@ -141,11 +141,49 @@ def _norm(x, peak=1.0):
 # (so no two uploads share an exact harmony), while staying close enough to
 # the tuned original that the theme still sounds like itself.
 _TRANSPOSE_SEMITONES = (-4, -2, 0, 2, 3)
+_KEY_INDEX = None  # set from --variant: cycles the key from one upload to the next
 
 
 def _transpose_ratio(rng):
-    """Pick one preset pitch-shift ratio for this render's melodic root(s)."""
-    return 2.0 ** (rng.choice(_TRANSPOSE_SEMITONES) / 12.0)
+    """Pick one preset pitch-shift ratio for this render's melodic root(s).
+    With --variant (the Vol. number) the key steps through every entry before
+    repeating, so two consecutive uploads of a theme are never in one key."""
+    pick = rng.choice(_TRANSPOSE_SEMITONES)
+    if _KEY_INDEX is not None:
+        pick = _TRANSPOSE_SEMITONES[_KEY_INDEX]
+    return 2.0 ** (pick / 12.0)
+
+
+# Varispeed: the whole ambient bed is rendered slightly longer or shorter and
+# squeezed to length, so pitch AND pace move together (like a tape running a
+# little fast or slow). Never applied to the wellness tones / binaural beats,
+# which must stay at their exact frequency.
+_VARISPEED_STEPS = (-1.5, -0.75, 0.0, 0.75, 1.5)  # semitones
+
+
+def varispeed_semitones(rng, variant=None):
+    jitter = rng.uniform(-0.25, 0.25)
+    if variant is None:
+        return float(rng.uniform(-1.5, 1.5))
+    return _VARISPEED_STEPS[(int(variant) * 2) % len(_VARISPEED_STEPS)] + float(jitter)
+
+
+def varispeed(gen, n, semitones):
+    """gen(m) rendered at m = n * 2**(st/12) samples, resampled to n."""
+    r = 2.0 ** (semitones / 12.0)
+    m = max(2, int(round(n * r)))
+    x = gen(m)
+    out = np.empty(n, dtype=np.float64)
+    step = 1 << 20  # chunked, so hour-long beds don't need extra copies in memory
+    scale = (m - 1) / max(1, n - 1)
+    for a in range(0, n, step):
+        b = min(n, a + step)
+        pos = np.arange(a, b, dtype=np.float64) * scale
+        i = pos.astype(np.int64)
+        fr = pos - i
+        j = np.minimum(i + 1, m - 1)
+        out[a:b] = x[i] * (1.0 - fr) + x[j] * fr
+    return out
 
 
 def sine(freq, n, phase=0.0):
@@ -1569,6 +1607,34 @@ def tone_drone(n, rng, freq, amp=0.22, soft=False):
     return amp * _norm(out) * env
 
 
+def tone_texture(n, rng, carrier, amp=0.10):
+    """A quiet, slowly evolving musical bed for pure-frequency tracks, built
+    only from the carrier's own consonant intervals (octave below, fifth,
+    octave, twelfth): a breathing harmonic pad plus rare soft bell notes.
+    Its partials, swell rates and note timings come from the seed, so no two
+    uploads of a frequency track are the same, while the exact carrier and
+    any binaural beat (added separately) are untouched."""
+    def fold(f):
+        while f > 700.0:
+            f /= 2.0
+        while f < 110.0:
+            f *= 2.0
+        return f
+
+    ratios = [0.5, 1.5, 2.0, 3.0, 0.75, 1.25]
+    chosen = rng.choice(len(ratios), size=int(rng.integers(2, 4)), replace=False)
+    pad = np.zeros(n)
+    for k in chosen:
+        f = fold(carrier * ratios[k])
+        swell = 0.5 + 0.5 * slow_env(n, rng, rate_hz=rng.uniform(0.01, 0.05), depth=1.0)
+        pad += sine(f, n, rng.uniform(0, 2 * np.pi)) * swell
+    pad = lowpass(_norm(pad), corner=1200)
+    scale = np.array([fold(carrier * r) for r in (0.5, 0.75, 1.0, 1.125, 1.25, 1.5)])
+    bells = _sparse_melody(n, rng, scale, gap=(rng.uniform(5, 8), rng.uniform(10, 16)),
+                           dur=(2.5, 4.5), amp=0.5, maker=_bell)
+    return amp * _norm(0.7 * pad + 0.3 * lowpass(bells, corner=2500))
+
+
 def reverb(x, rng, decay=2.2, mix=0.35):
     """Cheap dark reverb (FFT convolution with a decaying, low-passed noise
     impulse). Smears pure sine tones into a soft wash, which is the single
@@ -1709,9 +1775,15 @@ def main():
     p.add_argument("--tone-gain", type=float, default=0.22)
     p.add_argument("--beat-gain", type=float, default=0.20)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--variant", type=int, default=None,
+                   help="the upload's Vol. number: steps the key and the varispeed "
+                        "so consecutive uploads of a theme never sound alike")
     p.add_argument("--out", default="audio.wav")
     args = p.parse_args()
 
+    global _KEY_INDEX
+    if args.variant is not None:
+        _KEY_INDEX = (args.variant * 3) % len(_TRANSPOSE_SEMITONES)
     rng = np.random.default_rng(args.seed)
     length = args.seconds if args.seconds else args.loop_seconds
     n = int(length * SR)
@@ -1722,9 +1794,15 @@ def main():
     layers = []
 
     # ---- mono bed: ambient theme + tone drone(s) + isochronic + bowl ----
-    mono = SYNTHS[args.theme](n, rng) if args.theme != "none" else np.zeros(n)
     if args.theme != "none":
-        layers.append(f"theme={args.theme}")
+        st = varispeed_semitones(rng, args.variant)
+        mono = varispeed(lambda m: SYNTHS[args.theme](m, rng), n, st)
+        layers.append(f"theme={args.theme} varispeed={st:+.2f}st")
+    else:
+        mono = np.zeros(n)
+    # Frequency-only tracks get a quiet texture, mixed in AFTER the level
+    # normalisation below so it always sits ~12 dB under the tone itself.
+    texture = tone_texture(n, rng, carrier, amp=1.0) if (args.theme == "none" and carrier) else None
 
     binaural_carrier = beat is not None and args.beat_type == "binaural"
     # Sustained tone drones. With a binaural beat the primary carrier becomes the
@@ -1754,6 +1832,9 @@ def main():
 
     if np.max(np.abs(mono)) > 1e-9:
         mono = _norm(mono, 0.9)
+        tone_level = 0.9
+    else:
+        tone_level = args.beat_gain  # binaural-only track: the beat is the tone
 
     # ---- to stereo, then binaural overlay (must stay L/R distinct) ----
     # Ambient themes want the noise-based widener; pure tone/frequency tracks do
@@ -1763,6 +1844,9 @@ def main():
     if binaural_carrier:
         stereo = stereo + binaural(n, rng, carrier or 200.0, beat, amp=args.beat_gain)
         layers.append(f"binaural={beat:g}Hz@{carrier or 200:g}Hz")
+    if texture is not None:
+        stereo = stereo + (0.25 * tone_level * _norm(texture))[:, None]
+        layers.append("texture")
     stereo = _norm(stereo, 0.9)
 
     if args.reverb > 0:

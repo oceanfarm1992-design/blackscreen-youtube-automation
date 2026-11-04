@@ -325,3 +325,271 @@ def test_noise_field_is_seed_unique():
     a = _noise_field(64, 36, np.random.default_rng(1))
     b = _noise_field(64, 36, np.random.default_rng(2))
     assert not np.allclose(a, b)
+
+
+# --------------------------------------------------------------------------- #
+# Visual variety: every upload has its own look, not just a reshuffled cloud.
+
+@pytest.mark.parametrize("topic", sorted(TOPIC_PROFILES))
+def test_every_look_loops_seamlessly(topic):
+    """Hours-long features loop an animated segment: the frame after the last
+    must match the first for every layer, or the loop point would jump."""
+    from make_animated_video import TOPIC_LAYERS, frame_maker
+    for v in range(len(TOPIC_LAYERS[topic])):
+        n, frame, look = frame_maker(20, 160, 90, "4a6a4a", 20261104000 + v, topic,
+                                     periodic=True, variant=v)
+        seam = np.abs(frame(0).astype(int) - frame(n).astype(int)).mean()
+        assert seam < 0.5, f"{topic}/{look['layer']}: loop seam differs by {seam:.2f}"
+
+
+def color_of(T, key):
+    return T.ACCENT_COLORS[key] if hasattr(T, "ACCENT_COLORS") else T.accent_for(key)
+
+
+@pytest.mark.parametrize("folder", ALL)
+def test_consecutive_uploads_of_a_theme_never_share_a_layer(folder):
+    """The animated layer cycles with the Vol. number, so when a theme comes
+    round again (in either format) it never looks like its last upload."""
+    from make_animated_video import pick_look
+    T = THEMES[folder]
+    last = {}
+    for d, slot, key, fmt, vol in scheduled_uploads(T, 730):
+        seed = K.render_seed(T, int(d.strftime("%Y%m%d")) * 1000 + slot)
+        layer = pick_look(seed, T.topic_for(key), vol)["layer"]
+        assert last.get((key, fmt)) != layer, f"{key} {fmt} Vol. {vol} repeats layer {layer}"
+        last[(key, fmt)] = layer
+
+
+@pytest.mark.parametrize("folder", ALL)
+def test_two_uploads_of_a_theme_look_clearly_different(folder):
+    """Not just different pixels: the same moment of two consecutive uploads
+    of a theme should differ visibly -- by more than 15% of the picture's own
+    brightness, so dark themes and the dim main channel are judged fairly."""
+    from make_animated_video import frame_maker
+    T = THEMES[folder]
+    for theme in T.THEMES:
+        key = theme["key"]
+        frames = []
+        for vol, seed in ((7, 20261105000), (8, 20261115000)):
+            dim = getattr(T, "VISUAL_DIM", 1.0)
+            n, frame, _ = frame_maker(10, 192, 108, color_of(T, key), K.render_seed(T, seed),
+                                      T.topic_for(key), variant=vol, dim=dim)
+            frames.append(frame(90).astype(int))
+        rel = np.abs(frames[0] - frames[1]).mean() / (np.mean(frames) + 1e-9)
+        assert rel > 0.15, f"{folder}/{key}: consecutive uploads differ by only {rel:.0%}"
+
+
+# --------------------------------------------------------------------------- #
+# Duplicate guard: a title already on the channel is never uploaded again.
+
+class _Exec:
+    def __init__(self, result):
+        self.result = result
+
+    def execute(self):
+        if isinstance(self.result, Exception):
+            raise self.result
+        return self.result
+
+
+class _Channel:
+    """Fake client: channels().list -> uploads playlist; playlistItems pages."""
+    def __init__(self, pages, channels=None):
+        self.pages, self.channels_result = list(pages), channels
+
+    def channels(self):
+        return self
+
+    def playlistItems(self):
+        return self
+
+    def list(self, **kw):
+        if "mine" in kw:
+            return _Exec(self.channels_result or
+                         {"items": [{"contentDetails": {"relatedPlaylists": {"uploads": "UU1"}}}]})
+        return _Exec(self.pages.pop(0))
+
+    def list_next(self, req, res):
+        return _Exec(self.pages.pop(0)) if self.pages else None
+
+
+def _page(*titles):
+    return {"items": [{"snippet": {"title": t}} for t in titles]}
+
+
+def test_duplicate_titles_are_detected_across_pages():
+    yt = _Channel([_page("Creek Hollow Vol. 6 #shorts"), _page("Creek  Hollow Vol. 7 #Shorts")])
+    existing = U.recent_upload_titles(yt)
+    assert U.is_duplicate_title(existing, "Creek Hollow Vol. 7 #shorts")
+    assert not U.is_duplicate_title(existing, "Creek Hollow Vol. 8 #shorts")
+
+
+def test_duplicate_check_never_blocks_an_upload_when_it_cannot_read():
+    """Upload-only tokens get a 403 on channels.list: the check must fail open."""
+    from googleapiclient.errors import HttpError
+    yt = _Channel([], channels=HttpError(_Resp(403), b"insufficientPermissions"))
+    existing = U.recent_upload_titles(yt)
+    assert existing is None
+    assert not U.is_duplicate_title(existing, "anything")
+
+
+# --------------------------------------------------------------------------- #
+# Every video on every channel is its own render, and its music is its own.
+
+def test_render_seeds_are_unique_across_all_channels():
+    """Channels share date-based schedule seeds (and some share a music
+    preset); the per-channel render seed keeps every render distinct."""
+    seen = {}
+    for folder in ALL:
+        T = THEMES[folder]
+        for d, slot, key, fmt, vol in scheduled_uploads(T, 730):
+            s = K.render_seed(T, int(d.strftime("%Y%m%d")) * 1000 + slot)
+            assert s not in seen, f"{folder} {d} reuses the render seed of {seen[s]}"
+            seen[s] = (folder, d)
+
+
+def test_main_channel_is_no_longer_sold_as_a_black_screen():
+    T = THEMES["scripts"]
+    for theme in T.THEMES:
+        for fmt in ("short", "long"):
+            meta_title = titles("scripts", theme, fmt, 3)
+            assert "black" not in meta_title.lower(), meta_title
+        assert not any("black" in t.lower() for t in theme["tags"]), theme["key"]
+        assert "black" not in theme["description"].lower(), theme["key"]
+        assert T.topic_for(theme["key"]) in TOPIC_PROFILES
+        assert re.fullmatch(r"[0-9a-f]{6}", T.accent_for(theme["key"]))
+
+
+def test_consecutive_uploads_never_share_a_key_or_tape_speed():
+    n = len(G._TRANSPOSE_SEMITONES)
+    for vol in range(1, 200):
+        assert (vol * 3) % n != ((vol + 1) * 3) % n  # key index, as main() sets it
+        a = G.varispeed_semitones(np.random.default_rng(vol), vol)
+        b = G.varispeed_semitones(np.random.default_rng(vol + 1), vol + 1)
+        assert abs(a - b) > 0.2, (vol, a, b)
+
+
+def test_varispeed_keeps_the_length_and_shifts_the_pitch():
+    sr = G.SR
+    tone = lambda m: np.sin(2 * np.pi * 440.0 * np.arange(m) / sr)
+    out = G.varispeed(tone, sr * 2, 2.0)  # +2 semitones
+    assert len(out) == sr * 2
+    f = np.fft.rfftfreq(len(out), 1 / sr)[np.argmax(np.abs(np.fft.rfft(out)))]
+    assert abs(f - 440.0 * 2 ** (2 / 12)) < 1.0, f
+
+
+def _render_audio(tmp_path, name, *args):
+    import subprocess
+    import soundfile as sf
+    out = tmp_path / f"{name}.wav"
+    subprocess.run([sys.executable, os.path.join(SCRIPTS, "generate_theme_audio.py"),
+                    "--seconds", "6", "--out", str(out)] + [str(a) for a in args],
+                   check=True, capture_output=True)
+    return sf.read(str(out))[0]
+
+
+@pytest.mark.parametrize("synth_args", [
+    ["--theme", "creek_hollow"],
+    ["--theme", "sleeping", "--tone", "528", "--beat", "delta", "--beat-type", "binaural"],
+])
+def test_two_uploads_of_a_theme_have_different_music(tmp_path, synth_args):
+    a = _render_audio(tmp_path, "a", "--seed", 11, "--variant", 4, *synth_args)
+    b = _render_audio(tmp_path, "b", "--seed", 12, "--variant", 5, *synth_args)
+    corr = abs(np.corrcoef(a[:, 0], b[:, 0])[0, 1])
+    assert corr < 0.5, f"consecutive uploads correlate {corr:.2f}"
+
+
+def test_frequency_tracks_vary_but_keep_their_exact_tone(tmp_path):
+    """Pure-frequency tracks get a seed-varied texture under the tone; the
+    carrier itself must still dominate and stay exactly on frequency."""
+    args = ["--theme", "none", "--tone", "963", "--tone-soft", "--tone-gain", "0.14"]
+    a = _render_audio(tmp_path, "a", "--seed", 21, "--variant", 1, *args)
+    b = _render_audio(tmp_path, "b", "--seed", 22, "--variant", 2, *args)
+    for x in (a, b):
+        spec = np.abs(np.fft.rfft(x.mean(1))) ** 2
+        f = np.fft.rfftfreq(len(x), 1 / G.SR)
+        assert abs(f[np.argmax(spec)] - 963.0) < 0.5
+        assert spec[(f > 958) & (f < 968)].sum() / spec.sum() > 0.6
+    # the texture under the tone differs between uploads
+    def texture(x):
+        spec = np.abs(np.fft.rfft(x.mean(1)))
+        f = np.fft.rfftfreq(len(x), 1 / G.SR)
+        spec[(f > 900) & (f < 1030)] = 0
+        return spec / np.linalg.norm(spec)
+    assert texture(a) @ texture(b) < 0.9
+
+
+# --------------------------------------------------------------------------- #
+# Optional OpenRouter description paragraph: free models only, validated,
+# and never able to block a video.
+import llm_copy as L  # noqa: E402
+
+
+def test_only_free_text_models_are_used_best_first():
+    models = [
+        {"id": "openai/gpt-5", "pricing": {"prompt": "0.000002", "completion": "0.00001"}},
+        {"id": "some/tiny-model:free", "pricing": {"prompt": "0", "completion": "0"}},
+        {"id": "meta-llama/llama-3.3-70b-instruct:free", "pricing": {"prompt": "0", "completion": "0"}},
+        {"id": "x/image-gen:free", "pricing": {"prompt": "0", "completion": "0"},
+         "architecture": {"output_modalities": ["image"]}},
+    ]
+    assert L.free_models(models) == ["meta-llama/llama-3.3-70b-instruct:free", "some/tiny-model:free"]
+
+
+def test_model_text_is_validated():
+    good = ("Let the evening settle around you as soft water moves somewhere close by. "
+            "There is nothing left to do now but listen, breathe slowly, and let the "
+            "quiet carry you a little further from the day.")
+    assert L.clean(f'"{good}"') == good
+    assert L.clean("<think>plan</think> " + good) == good
+    assert L.clean(good + " Visit https://x.y") is None          # links
+    assert L.clean(good + " #sleep") is None                     # hashtags
+    assert L.clean(good + " This music cures insomnia.") is None  # health claims
+    assert L.clean(good + " Written by AI.") is None
+    assert L.clean("Too short.") is None
+
+
+def test_description_falls_back_when_openrouter_is_unavailable(tmp_path, monkeypatch):
+    meta = tmp_path / "m.json"
+    meta.write_text('{"title": "T", "description": "Lead.\\n\\nBody"}', encoding="utf-8")
+    original = meta.read_text(encoding="utf-8")
+    theme = THEMES["manor"].THEMES[0]
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    assert L.enrich_metadata(str(meta), "B", theme, "short", 3, 1) is False
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+
+    def boom(*a, **k):
+        raise OSError("network down")
+    monkeypatch.setattr(L, "_request", boom)
+    assert L.enrich_metadata(str(meta), "B", theme, "short", 3, 1) is False
+    assert meta.read_text(encoding="utf-8") == original
+
+
+def test_description_gets_the_paragraph_after_its_first_line(tmp_path, monkeypatch):
+    import json as _json
+    para = ("Let the evening settle around you as soft water moves somewhere close by. "
+            "There is nothing left to do now but listen, breathe slowly, and let the "
+            "quiet carry you a little further from the day.")
+    calls = []
+
+    def fake(path, key, body=None):
+        calls.append(path)
+        if path == "/models":
+            return {"data": [{"id": "a/m:free", "pricing": {"prompt": "0", "completion": "0"}}]}
+        return {"choices": [{"message": {"content": para}}]}
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    monkeypatch.setattr(L, "_request", fake)
+    meta = tmp_path / "m.json"
+    meta.write_text(_json.dumps({"title": "T", "description": "Lead.\n\nBody"}), encoding="utf-8")
+    assert L.enrich_metadata(str(meta), "B", THEMES["manor"].THEMES[0], "long", 3, 1)
+    out = _json.loads(meta.read_text(encoding="utf-8"))
+    assert out["description"] == f"Lead.\n\n{para}\n\nBody"
+    assert out["description_ai_model"] == "a/m:free"
+    assert calls == ["/models", "/chat/completions"]
+
+
+@pytest.mark.parametrize("wf", sorted(f for f in os.listdir(os.path.join(ROOT, ".github", "workflows"))
+                                      if f.startswith("publish")))
+def test_every_channel_workflow_passes_the_openrouter_key(wf):
+    text = open(os.path.join(ROOT, ".github", "workflows", wf), encoding="utf-8").read()
+    assert "OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}" in text

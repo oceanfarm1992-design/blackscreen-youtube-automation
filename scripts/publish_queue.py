@@ -57,6 +57,15 @@ def main():
             print(f"[auth] {fmt} uploads -> {prefix} project")
         return services[prefix]
 
+    # Both projects upload to the same channel, so one list of its recent
+    # titles serves both; a title already there is skipped, never re-posted.
+    existing = []  # [set | None], read lazily on the first upload
+
+    def already_on_channel(youtube, title):
+        if not existing:
+            existing.append(U.recent_upload_titles(youtube))
+        return U.is_duplicate_title(existing[0], title)
+
     # Auto-playlists: long-forms are added to their sub-niche playlist, routed
     # through the YT_SHORTS project (it has the quota headroom; 50 units/add).
     # Needs the broader "youtube" scope on that token — until it's re-minted
@@ -91,11 +100,21 @@ def main():
         video = os.path.join(ROOT, man["video"])
         youtube = service_for(man["format"])
 
+        if already_on_channel(youtube, meta["title"]):
+            print(f"Skipping {man['theme']} {man['format']}: '{meta['title']}' is already "
+                  "on the channel")
+            man["status"] = "skipped_duplicate"
+            with open(mpath, "w", encoding="utf-8") as f:
+                json.dump(man, f, ensure_ascii=False, indent=2)
+            continue
+
         print(f"Uploading {man['theme']} {man['format']} as {args.privacy}: {meta['title']}")
         video_id = U.upload_video(
             youtube, video, meta["title"], meta["description"], meta.get("tags", []),
             category_id=meta.get("categoryId", "10"), privacy=args.privacy,
         )
+        if existing[0] is not None:
+            existing[0].add(U._norm_title(meta["title"]))
         # Shorts have no custom thumbnail (thumbnail=None) — skip to save API quota.
         # Custom thumbnails also require a verified channel; if not enabled the API
         # returns 403 — don't fail the run over an optional extra.

@@ -1,0 +1,25 @@
+# Keeps the pipeline's dependencies current without manual checking.
+# Dependabot opens a pull request for each update; the `tests` workflow runs on
+# it, so merge it once the check is green. Nothing updates on its own: the
+# scheduled channel workflows only ever run what is on main.
+version: 2
+updates:
+  # GitHub Actions used by the workflows (checkout, setup-python, upload-artifact)
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Python packages in requirements.txt. The upper bounds there are deliberate
+  # (see its header): a PR that raises one is a new major version, so read its
+  # release notes before merging.
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      python-minor:
+        update-types: ["minor", "patch"]
