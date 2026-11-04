@@ -593,3 +593,16 @@ def test_description_gets_the_paragraph_after_its_first_line(tmp_path, monkeypat
 def test_every_channel_workflow_passes_the_openrouter_key(wf):
     text = open(os.path.join(ROOT, ".github", "workflows", wf), encoding="utf-8").read()
     assert "OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}" in text
+
+
+def test_ai_music_benchmark_is_manual_and_has_no_youtube_access():
+    """The CPU music-model benchmark is a listening test: run by hand only,
+    no YouTube secrets, read-only token, nothing published."""
+    import yaml
+    path = os.path.join(ROOT, ".github", "workflows", "benchmark-ai-music.yml")
+    text = open(path, encoding="utf-8").read()
+    wf = yaml.safe_load(text)
+    triggers = wf.get("on", wf.get(True))
+    assert list(triggers) == ["workflow_dispatch"]
+    assert wf["permissions"] == {"contents": "read"}
+    assert "_YT_" not in text and "YT_REFRESH" not in text and "upload_youtube" not in text

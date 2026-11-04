@@ -1,0 +1,177 @@
+name: benchmark-ai-music
+
+# TEST ONLY -- run by hand from the Actions tab. Renders one sample of the
+# same prompt with two CPU-friendly AI music models and with the current
+# numpy synth, times each, and saves the audio as a downloadable artifact so
+# you can listen before deciding anything. It has no YouTube secrets and
+# uploads nothing anywhere.
+#
+#   stable-audio : Stable Audio Open Small (341M, built for CPUs, ~11 s clips
+#                  crossfaded into one sample). Needs secrets.HF_TOKEN from a
+#                  Hugging Face account that accepted the model licence at
+#                  huggingface.co/stabilityai/stable-audio-open-small
+#   acestep      : ACE-Step 1.5 through acestep.cpp (GGML, CPU + OpenBLAS),
+#                  DiT-only (no language model), turbo DiT quantised to Q4_K_M
+#                  -- about 2.4 GB of model files, cached between runs.
+#   current      : this repo's own generator, for comparison.
+
+on:
+  workflow_dispatch:
+    inputs:
+      models:
+        description: "which to run"
+        type: choice
+        options: [all, stable-audio, acestep, current]
+        default: all
+      prompt:
+        description: "music description (instrumental)"
+        default: "calm ambient acoustic guitar over a gentle flowing stream, soft, slow, warm, instrumental sleep music"
+      seconds:
+        description: "sample length in seconds"
+        default: "59"
+
+permissions:
+  contents: read
+
+jobs:
+  stable-audio:
+    if: inputs.models == 'all' || inputs.models == 'stable-audio'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      PROMPT: ${{ inputs.prompt }}
+      SECONDS_IN: ${{ inputs.seconds }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"   # stable-audio-tools pins pandas 2.0.2 etc.
+      - name: Check the Hugging Face token
+        run: |
+          if [ -z "$HF_TOKEN" ]; then
+            echo "::error::Add a repo secret HF_TOKEN (Hugging Face access token) from an account that accepted the licence at https://huggingface.co/stabilityai/stable-audio-open-small"
+            exit 1
+          fi
+      - name: Install (CPU-only PyTorch)
+        run: |
+          pip install torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+          pip install stable-audio-tools==0.0.19 soundfile
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Generate
+        run: |
+          case "$SECONDS_IN" in ''|*[!0-9]*) echo "seconds must be a whole number"; exit 1 ;; esac
+          mkdir -p out
+          python bench/stable_audio_small.py --prompt "$PROMPT" --seconds "$SECONDS_IN" \
+            --out out/stable_audio_small.wav --report out/stable_audio_small.json
+          ffmpeg -loglevel error -y -i out/stable_audio_small.wav -b:a 192k out/stable_audio_small.mp3
+          python - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          r = json.load(open("out/stable_audio_small.json"))
+          print("### Stable Audio Open Small (CPU)")
+          print(f"- model load: {r['load_seconds']} s")
+          print(f"- {r['clips']} clips x {r['clip_seconds']:.0f} s, {r['seconds_per_clip']} s each")
+          print(f"- **{r['total_generate_seconds']} s to make {r['audio_seconds']} s of audio** "
+                f"({r['realtime_factor']}x real time)")
+          EOF
+      - uses: actions/upload-artifact@v5
+        with:
+          name: sample-stable-audio-small
+          path: out/stable_audio_small.mp3
+
+  acestep:
+    if: inputs.models == 'all' || inputs.models == 'acestep'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      PROMPT: ${{ inputs.prompt }}
+      SECONDS_IN: ${{ inputs.seconds }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: ServeurpersoCom/acestep.cpp
+          ref: de858d8e1a94f0e1939cf9bdd8ff7d9631953077   # pinned, MIT
+          submodules: recursive
+          path: acestep.cpp
+          persist-credentials: false
+      - name: Build (CPU + OpenBLAS)
+        run: |
+          sudo apt-get update && sudo apt-get install -y cmake libopenblas-dev ffmpeg
+          cd acestep.cpp && mkdir -p build && cd build
+          cmake .. -DGGML_BLAS=ON -DGGML_BLAS_VENDOR=OpenBLAS -DCMAKE_BUILD_TYPE=Release
+          cmake --build . --config Release -j "$(nproc)"
+      - uses: actions/cache@v4
+        with:
+          path: acestep.cpp/models
+          key: acestep15-gguf-dit-q4km-v1
+      - name: Download models (DiT turbo Q4_K_M + text encoder + VAE)
+        run: |
+          pip install -q "huggingface_hub[cli]"
+          cd acestep.cpp && mkdir -p models
+          for f in vae-BF16.gguf Qwen3-Embedding-0.6B-Q8_0.gguf acestep-v15-turbo-Q4_K_M.gguf; do
+            [ -f "models/$f" ] || hf download Serveurperso/ACE-Step-1.5-GGUF "$f" --local-dir models
+          done
+          du -sh models
+      - name: Generate
+        run: |
+          case "$SECONDS_IN" in ''|*[!0-9]*) echo "seconds must be a whole number"; exit 1 ;; esac
+          mkdir -p out
+          python - <<'EOF'
+          import json, os
+          json.dump({
+              "synth_model": "acestep-v15-turbo-Q4_K_M",
+              "caption": os.environ["PROMPT"],
+              "lyrics": "[Instrumental]",
+              "bpm": 70, "keyscale": "D major", "timesignature": "4",
+              "duration": float(os.environ["SECONDS_IN"]),
+              "inference_steps": 8, "guidance_scale": 1.0, "shift": 3.0,
+              "seed": 1, "output_format": "mp3", "mp3_bitrate": 192,
+          }, open("out/acestep.json", "w"), indent=2)
+          EOF
+          python - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          import os, resource, subprocess, sys, time
+          t = time.time()
+          # the tool's own log goes to the job log, not into this summary
+          subprocess.run(["acestep.cpp/build/ace-synth", "--models", "acestep.cpp/models",
+                          "--request", "out/acestep.json"], check=True, stdout=sys.stderr)
+          took = time.time() - t
+          peak_gb = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss / 1024 / 1024
+          secs = float(os.environ["SECONDS_IN"])
+          print("### ACE-Step 1.5 via acestep.cpp (CPU, DiT-only, Q4_K_M)")
+          print(f"- **{took:.0f} s to make {secs:.0f} s of audio** ({took / secs:.2f}x real time)")
+          print(f"- peak memory: {peak_gb:.1f} GB, CPU threads: {os.cpu_count()}")
+          EOF
+          mv out/acestep0.mp3 out/acestep_1_5.mp3
+      - uses: actions/upload-artifact@v5
+        with:
+          name: sample-acestep-1.5
+          path: out/acestep_1_5.mp3
+
+  current:
+    if: inputs.models == 'all' || inputs.models == 'current'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SECONDS_IN: ${{ inputs.seconds }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Generate with the current synth (Moss & Manor, Creek Hollow)
+        run: |
+          case "$SECONDS_IN" in ''|*[!0-9]*) echo "seconds must be a whole number"; exit 1 ;; esac
+          pip install -r requirements.txt
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+          mkdir -p out
+          START=$(date +%s)
+          python scripts/generate_theme_audio.py --theme creek_hollow --seconds "$SECONDS_IN" \
+            --seed 1 --variant 1 --out out/current.wav
+          TOOK=$(( $(date +%s) - START ))
+          ffmpeg -loglevel error -y -i out/current.wav -b:a 192k out/current_synth.mp3
+          { echo "### Current generator (numpy synth)"; echo "- **${TOOK} s to make ${SECONDS_IN} s of audio**"; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: sample-current-synth
+          path: out/current_synth.mp3
