@@ -112,6 +112,90 @@ jobs:
             fi
           fi
 
+      # ---- ACE-Step 1.5: AI music for Shorts (themes.ACESTEP_FORMATS) ----
+      # Skipped for the feature slot. Every step may fail without failing the
+      # run: produce.py then makes that Short's music with the synth instead.
+      # Models live in a shared cache (see benchmark-ai-music.yml).
+      - name: "ACE-Step: get acestep.cpp (pinned, MIT)"
+        if: steps.slot.outputs.slot != '0'
+        continue-on-error: true
+        uses: actions/checkout@v5
+        with:
+          repository: ServeurpersoCom/acestep.cpp
+          ref: de858d8e1a94f0e1939cf9bdd8ff7d9631953077
+          submodules: recursive
+          path: acestep.cpp
+          persist-credentials: false
+
+      - name: "ACE-Step: restore build"
+        id: ace-build
+        if: steps.slot.outputs.slot != '0'
+        continue-on-error: true
+        uses: actions/cache/restore@v4
+        with:
+          path: acestep.cpp/build
+          key: acestep-cpp-build-de858d8-openblas-v1
+
+      - name: "ACE-Step: build (first run only)"
+        if: steps.slot.outputs.slot != '0'
+        continue-on-error: true
+        run: |
+          sudo apt-get install -y libopenblas-dev   # also the runtime library
+          [ -x acestep.cpp/build/ace-synth ] && exit 0
+          cd acestep.cpp && mkdir -p build && cd build
+          cmake .. -DGGML_BLAS=ON -DGGML_BLAS_VENDOR=OpenBLAS -DCMAKE_BUILD_TYPE=Release
+          cmake --build . --config Release -j "$(nproc)" --target ace-synth
+
+      - name: "ACE-Step: save build"
+        if: steps.slot.outputs.slot != '0' && steps.ace-build.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: acestep.cpp/build
+          key: acestep-cpp-build-de858d8-openblas-v1
+
+      - name: "ACE-Step: restore models"
+        id: ace-models
+        if: steps.slot.outputs.slot != '0'
+        continue-on-error: true
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/ai-models/acestep15
+          key: models-acestep15-dit-turbo-q4km-v1
+
+      - name: "ACE-Step: download models (first run only)"
+        if: steps.slot.outputs.slot != '0' && steps.ace-models.outputs.cache-hit != 'true'
+        continue-on-error: true
+        run: |
+          pip install -q "huggingface_hub[cli]"
+          mkdir -p ~/.cache/ai-models/acestep15
+          for f in vae-BF16.gguf Qwen3-Embedding-0.6B-Q8_0.gguf acestep-v15-turbo-Q4_K_M.gguf; do
+            hf download Serveurperso/ACE-Step-1.5-GGUF "$f" --local-dir ~/.cache/ai-models/acestep15
+          done
+          rm -rf ~/.cache/ai-models/acestep15/.cache
+
+      - name: "ACE-Step: save models"
+        if: steps.slot.outputs.slot != '0' && steps.ace-models.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/ai-models/acestep15
+          key: models-acestep15-dit-turbo-q4km-v1
+
+      - name: "ACE-Step: enable if ready"
+        if: steps.slot.outputs.slot != '0'
+        continue-on-error: true
+        run: |
+          M=~/.cache/ai-models/acestep15
+          if [ -x acestep.cpp/build/ace-synth ] && [ -f "$M/acestep-v15-turbo-Q4_K_M.gguf" ] \
+             && [ -f "$M/vae-BF16.gguf" ] && [ -f "$M/Qwen3-Embedding-0.6B-Q8_0.gguf" ]; then
+            echo "ACESTEP_BIN=$PWD/acestep.cpp/build/ace-synth" >> "$GITHUB_ENV"
+            echo "ACESTEP_MODELS=$M" >> "$GITHUB_ENV"
+            echo "ACE-Step ready: Shorts get AI music this run."
+          else
+            echo "::warning::ACE-Step not ready -- Shorts use the synth this run."
+          fi
+
       - name: Produce video(s) + QC
         # Inputs arrive as env vars -- never pasted into the script text -- so a
         # crafted workflow_dispatch value can't inject shell commands.
@@ -161,6 +245,17 @@ jobs:
           PRIVACY: ${{ github.event.inputs.privacy || 'public' }}
         run: |
           python scripts/publish_queue.py --out-dir out --privacy "$PRIVACY"
+
+      - name: Keep the rendered videos (test runs with upload=false)
+        if: always() && github.event.inputs.upload == 'false'
+        uses: actions/upload-artifact@v5
+        with:
+          name: videos-main-${{ github.run_id }}
+          path: |
+            out/*.mp4
+            out/*_meta.json
+          retention-days: 7
+          if-no-files-found: warn
 
       - name: Upload metadata, manifests + thumbnails as artifacts
         if: always()

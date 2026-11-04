@@ -323,6 +323,17 @@ def topic_for(theme_key: str) -> str:
     """The --topic to pass to make_animated_video.py for this theme."""
     return TOPICS.get(theme_key, "neutral")
 
+# ---- ACE-Step 1.5 (AI music) blended with this repo's own Python audio -------
+# Shorts get their music from ACE-Step; the channel's own code adds the nature
+# bed and, for wellness themes, the exact tones (scripts/channel_kit.py
+# render_ai_music). Any failure falls back to the synth for that upload, and
+# every AI upload says so in its description and is flagged as synthetic.
+ACESTEP_FORMATS = ("short",)
+ACESTEP_STYLE = "nostalgic lo-fi synthwave, warm VHS tape ambience, slow"
+# Nature bed overrides where the visual topic is the wrong cue for the sound.
+ACESTEP_AMBIENCE = {"vhs_afterglow": "ambience_air", "neon_corridor": "ambience_rain"}
+
+
 DESCRIPTION_FOOTER = (
     "\n\n— {brand} — {tagline}\n\n"
     "\U0001F3A7 Best experienced with headphones or a good speaker at a low volume.\n"

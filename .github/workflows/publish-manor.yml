@@ -97,7 +97,7 @@ jobs:
             fi
           fi
 
-      # ---- ACE-Step 1.5 trial: AI music for Shorts (themes.ACESTEP_FORMATS) ----
+      # ---- ACE-Step 1.5: AI music for Shorts (themes.ACESTEP_FORMATS) ----
       # Skipped for the feature slot. Every step may fail without failing the
       # run: produce.py then makes that Short's music with the synth instead.
       # Models live in a shared cache (see benchmark-ai-music.yml).

@@ -604,9 +604,26 @@ def ambience_wind_thunder(n, rng):
     return _norm(0.7 * wind + 0.4 * thunder, 0.9)
 
 
-# Beds that are safe under any key: the four above plus the pad-free originals.
+def ambience_air(n, rng):
+    """Dark, slowly swelling room air -- a near-silent bed for drone and
+    space themes that have no natural sound of their own."""
+    air = colored_noise(n, rng, tilt=1.9, lowpass=900)
+    air *= 0.55 + 0.45 * slow_env(n, rng, rate_hz=0.03, depth=1.0)
+    hiss = colored_noise(n, rng, tilt=1.0, highpass=2500, lowpass=7000) * 0.05
+    return _norm(air + hiss, 0.9)
+
+
+def ambience_night(n, rng):
+    """Summer night: soft air and crickets (the night synth without its pad)."""
+    amb = colored_noise(n, rng, tilt=1.8, lowpass=2000) * 0.28
+    crickets = sprinkle(n, rng, count=max(60, n // (SR // 10)), make_event=_cricket)
+    return _norm(amb + 0.5 * crickets, 0.9)
+
+
+# Beds that are safe under any key: the ones above plus the pad-free originals.
 AMBIENCE = ("ambience_rain", "ambience_drips", "ambience_meadow", "ambience_wind_thunder",
-            "stream", "wind", "rain_drops", "thunderstorm", "ocean")
+            "ambience_air", "ambience_night", "stream", "wind", "rain_drops", "thunderstorm",
+            "ocean", "fireplace", "brown_noise", "white_noise", "pink_noise")
 
 
 # --------------------------------------------------------------------------- #
@@ -1545,6 +1562,8 @@ SYNTHS = {
     "ambience_drips": ambience_drips,
     "ambience_meadow": ambience_meadow,
     "ambience_wind_thunder": ambience_wind_thunder,
+    "ambience_air": ambience_air,
+    "ambience_night": ambience_night,
     # "Aether & Ash" dark-ambient/drone/focus themes
     "void_drone": synth_void_drone,
     "abyssal_silence": synth_abyssal_silence,

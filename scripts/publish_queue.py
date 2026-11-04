@@ -112,6 +112,7 @@ def main():
         video_id = U.upload_video(
             youtube, video, meta["title"], meta["description"], meta.get("tags", []),
             category_id=meta.get("categoryId", "10"), privacy=args.privacy,
+            synthetic=bool(meta.get("containsSyntheticMedia")),
         )
         if existing[0] is not None:
             existing[0].add(U._norm_title(meta["title"]))

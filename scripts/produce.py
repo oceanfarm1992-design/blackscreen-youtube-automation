@@ -147,11 +147,21 @@ def produce_one(theme, fmt, out_dir, hours, seed, run_date, volume=None):
     ) if os.path.isdir(os.path.join(CLIPS_DIR, key)) else False
     bla = os.path.join(HERE, "build_long_audio.py")
 
+    engine = "synth"
     if fmt == "short":
-        run([sys.executable, gta, "--theme", theme["synth"], "--seconds", str(SHORT_SECONDS),
-             "--seed", str(seed), "--out", audio] + variant + freq)
+        ai_layers = None
+        if K.acestep_wanted(T, theme, "short"):
+            ai_layers = K.render_ai_music(T, theme, SHORT_SECONDS, seed, variant, stem, audio)
+            if ai_layers is None:
+                print("  ! ACE-Step render failed; using the synth for this upload")
+        if ai_layers is None:
+            run([sys.executable, gta, "--theme", theme["synth"], "--seconds", str(SHORT_SECONDS),
+                 "--seed", str(seed), "--out", audio] + variant + freq)
+        else:
+            engine = "acestep"
         animate(SHORT_SECONDS, 1080, 1920)
-        run([sys.executable, mm, "--theme", key, "--format", "short", "--out", meta] + vol)
+        ai = ["--ai-music", "--ai-layers", ai_layers] if engine == "acestep" else []
+        run([sys.executable, mm, "--theme", key, "--format", "short", "--out", meta] + vol + ai)
     elif has_ai_clips:
         run([sys.executable, bla, "--theme", key, "--seconds", str(LONG_LOOP_SECONDS),
              "--seed", str(seed), "--out", audio])
@@ -185,6 +195,7 @@ def produce_one(theme, fmt, out_dir, hours, seed, run_date, volume=None):
         "video": os.path.relpath(video, ROOT),
         "thumbnail": thumbnail_rel,
         "metadata": os.path.relpath(meta, ROOT),
+        "music_engine": engine,
         "qc": report,
         "status": "queued" if not report["problems"] else "qc_failed",
     }
