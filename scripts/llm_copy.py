@@ -172,7 +172,10 @@ def intro_for(brand, theme, fmt, volume, title, seed, key=None):
                 "model": model,
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.9,
-                "max_tokens": 400,
+                # Many free models reason before answering; with a small budget
+                # they spent it all thinking and returned an empty answer.
+                "max_tokens": 3000,
+                "reasoning": {"effort": "low", "exclude": True},
             })
             text, why = validate(((res.get("choices") or [{}])[0].get("message") or {}).get("content"))
             if text:
