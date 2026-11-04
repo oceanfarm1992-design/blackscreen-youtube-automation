@@ -52,8 +52,8 @@ jobs:
       PROMPT: ${{ inputs.prompt }}
       SECONDS_IN: ${{ inputs.seconds }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.10"   # stable-audio-tools pins pandas 2.0.2 etc.
           cache: pip               # PyTorch + stable-audio-tools wheels, reused
@@ -74,7 +74,7 @@ jobs:
           sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Restore model cache
         id: model-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ~/.cache/huggingface/hub
           key: models-hf-stable-audio-open-small-v1
@@ -91,7 +91,7 @@ jobs:
           du -sh ~/.cache/huggingface/hub
       - name: Save model cache
         if: steps.model-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: ~/.cache/huggingface/hub
           key: models-hf-stable-audio-open-small-v1
@@ -111,7 +111,7 @@ jobs:
           print(f"- **{r['total_generate_seconds']} s to make {r['audio_seconds']} s of audio** "
                 f"({r['realtime_factor']}x real time)")
           EOF
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: sample-stable-audio-small
           path: out/stable_audio_small.mp3
@@ -124,7 +124,7 @@ jobs:
       PROMPT: ${{ inputs.prompt }}
       SECONDS_IN: ${{ inputs.seconds }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           repository: ServeurpersoCom/acestep.cpp
           ref: de858d8e1a94f0e1939cf9bdd8ff7d9631953077   # pinned, MIT
@@ -139,7 +139,7 @@ jobs:
           cmake --build . --config Release -j "$(nproc)"
       - name: Restore model cache
         id: model-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ~/.cache/ai-models/acestep15
           key: models-acestep15-dit-turbo-q4km-v1
@@ -155,7 +155,7 @@ jobs:
           du -sh ~/.cache/ai-models/acestep15
       - name: Save model cache
         if: steps.model-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: ~/.cache/ai-models/acestep15
           key: models-acestep15-dit-turbo-q4km-v1
@@ -190,7 +190,7 @@ jobs:
           print(f"- peak memory: {peak_gb:.1f} GB, CPU threads: {os.cpu_count()}")
           EOF
           mv out/acestep0.mp3 out/acestep_1_5.mp3
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: sample-acestep-1.5
           path: out/acestep_1_5.mp3
@@ -202,8 +202,8 @@ jobs:
     env:
       SECONDS_IN: ${{ inputs.seconds }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
@@ -219,7 +219,7 @@ jobs:
           TOOK=$(( $(date +%s) - START ))
           ffmpeg -loglevel error -y -i out/current.wav -b:a 192k out/current_synth.mp3
           { echo "### Current generator (numpy synth)"; echo "- **${TOOK} s to make ${SECONDS_IN} s of audio**"; } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: sample-current-synth
           path: out/current_synth.mp3
