@@ -29,7 +29,7 @@ MAX_MODELS_TRIED = 8  # free models are often busy (HTTP 429): keep trying other
 
 # Free models that aren't general chat models (or are tiny) write poor prose.
 _SKIP = re.compile(r"code|coder|embed|vision|-vl\b|guard|ocr|image|audio|tts|whisper|"
-                   r"math|reward|\b0\.[0-9]+b\b|\b[1-3]b\b", re.I)
+                   r"math|reward|safety|\b0\.[0-9]+b\b|\b[1-3]b\b", re.I)
 
 # Tried first when free; anything else free is a fallback.
 PREFERRED = ("llama-3.3-70b", "deepseek", "gemini", "qwen3", "qwen", "mistral", "gemma", "llama")
@@ -102,23 +102,40 @@ def free_models(models):
     return sorted(ids, key=lambda i: (rank(i), i))
 
 
-def clean(text):
-    """The model's paragraph, tidied -- or None if it isn't usable."""
-    if not text:
-        return None
-    t = re.sub(r"<think>.*?</think>", "", text, flags=re.S)  # reasoning models
-    t = t.strip().strip('"“”').strip()
+def validate(text):
+    """(paragraph, None) if the model's answer is usable, else (None, reason)."""
+    if not text or not text.strip():
+        return None, "empty answer"
+    t = text
+    if "</think>" in t:                       # reasoning models: keep only the answer
+        t = t.rsplit("</think>", 1)[1]
+    t = re.sub(r"<think>.*", "", t, flags=re.S)
+    paras = [p.strip() for p in re.split(r"\n\s*\n", t) if p.strip()]
+    # drop a lead-in such as "Here is the opening paragraph:"
+    paras = [p for p in paras if not (len(p) < 100 and p.rstrip().endswith(":"))]
+    if not paras:
+        return None, "no paragraph"
+    t = max(paras[:3], key=len)               # the paragraph itself, not notes around it
+    t = t.strip().strip('"\u201c\u201d').strip()
     t = re.sub(r"[*_`>]+", "", t)
     t = " ".join(t.split())
-    if _BANNED.search(t):
-        return None
-    t = re.sub(r"[\U0001F000-\U0001FFFF☀-➿]", "", t).strip()
+    hit = _BANNED.search(t)
+    if hit:
+        return None, f"contains '{hit.group(0)}'"
+    t = re.sub(r"[\U0001F000-\U0001FFFF\u2600-\u27BF]", "", t).strip()
     if len(t) > 520:  # trim at a sentence end
         cut = t[:520]
         t = cut[: max(cut.rfind(". "), cut.rfind("! "), cut.rfind("? ")) + 1].strip()
-    if not (120 <= len(t) <= 520) or t[-1] not in ".!?":
-        return None
-    return t
+    if len(t) < 120:
+        return None, f"too short ({len(t)} chars)"
+    if t[-1] not in ".!?":
+        return None, "doesn't end in a full sentence"
+    return t, None
+
+
+def clean(text):
+    """The model's paragraph, tidied -- or None if it isn't usable."""
+    return validate(text)[0]
 
 
 def build_prompt(brand, theme, fmt, volume, title, angle):
@@ -157,10 +174,10 @@ def intro_for(brand, theme, fmt, volume, title, seed, key=None):
                 "temperature": 0.9,
                 "max_tokens": 400,
             })
-            text = clean(((res.get("choices") or [{}])[0].get("message") or {}).get("content"))
+            text, why = validate(((res.get("choices") or [{}])[0].get("message") or {}).get("content"))
             if text:
                 return text, model
-            last = f"{model}: answer failed validation"
+            last = f"{model}: answer rejected -- {why}"
             print(f"  ({last})")
         except urllib.error.HTTPError as e:
             last = f"{model}: HTTP {e.code}"  # 429 = free-tier limit; try the next model

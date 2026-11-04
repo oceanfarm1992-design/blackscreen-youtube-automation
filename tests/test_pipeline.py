@@ -555,6 +555,11 @@ def test_model_text_is_validated():
     assert L.clean(good + " This music cures insomnia.") is None  # health claims
     assert L.clean(good + " Written by AI.") is None
     assert L.clean("Too short.") is None
+    # common wrappers around a good answer are removed, and rejections say why
+    assert L.clean("Here is the opening paragraph:\n\n" + good) == good
+    assert L.clean("<think>draft ideas</think>\n" + good + "\n\nWord count: 52") == good
+    assert L.validate(good + " Visit www.x.com.")[1] == "contains 'www.'"
+    assert L.validate("")[1] == "empty answer"
 
 
 def test_description_falls_back_when_openrouter_is_unavailable(tmp_path, monkeypatch):
