@@ -606,3 +606,89 @@ def test_ai_music_benchmark_is_manual_and_has_no_youtube_access():
     assert list(triggers) == ["workflow_dispatch"]
     assert wf["permissions"] == {"contents": "read"}
     assert "_YT_" not in text and "YT_REFRESH" not in text and "upload_youtube" not in text
+
+
+# --------------------------------------------------------------------------- #
+# ACE-Step 1.5 trial (Moss & Manor Shorts): AI music with a synth fallback,
+# disclosed in the description and flagged as synthetic media.
+import acestep_audio as A  # noqa: E402
+
+
+def test_acestep_trial_is_manor_shorts_only():
+    for folder in ALL:
+        T = THEMES[folder]
+        assert getattr(T, "ACESTEP_FORMATS", ()) == (("short",) if folder == "manor" else ()), folder
+    T = THEMES["manor"]
+    assert set(T.ACESTEP_CAPTIONS) == {t["key"] for t in T.THEMES}
+
+
+def test_acestep_is_used_only_when_ready(tmp_path):
+    T = THEMES["manor"]
+    theme = T.THEMES[0]
+    binary = tmp_path / "ace-synth"
+    binary.write_text("")
+    ready = {"ACESTEP_BIN": str(binary), "ACESTEP_MODELS": str(tmp_path)}
+    assert K.acestep_wanted(T, theme, "short", ready)
+    assert not K.acestep_wanted(T, theme, "long", ready)            # features stay synth
+    assert not K.acestep_wanted(T, theme, "short", {})              # workflow didn't enable it
+    assert not K.acestep_wanted(T, theme, "short", {"ACESTEP_BIN": "/nope", "ACESTEP_MODELS": str(tmp_path)})
+    assert not K.acestep_wanted(THEMES["aether"], THEMES["aether"].THEMES[0], "short", ready)
+
+
+def test_acestep_request_is_instrumental_and_varies_per_upload():
+    reqs = [A.build_request("creek, guitar", 59, K.render_seed(THEMES["manor"], 20261105000 + i), v)
+            for i, v in enumerate(range(1, 30))]
+    for r in reqs:
+        assert r["lyrics"] == "[Instrumental]" and r["duration"] == 59.0
+        assert r["synth_model"].endswith(".gguf") and 58 <= r["bpm"] <= 80
+    keys = [r["keyscale"] for r in reqs]
+    assert all(a != b for a, b in zip(keys, keys[1:]))              # consecutive Vols: new key
+    assert len(set(keys[:12])) == 12                                # every key before a repeat
+    assert len({r["seed"] for r in reqs}) == len(reqs)
+
+
+def test_acestep_renders_are_checked_before_use():
+    sr = 48000
+    t = np.arange(59 * sr) / sr
+    good = np.stack([0.3 * np.sin(2 * np.pi * 220 * t)] * 2, axis=1)
+    assert A.check_audio(good, sr, 59) == []
+    assert A.check_audio(good[: 30 * sr], sr, 59)                   # too short
+    assert A.check_audio(good * 0, sr, 59)                          # silent
+    assert A.check_audio(np.clip(good * 20, -1, 1), sr, 59)         # clipped
+    out = A.finish(good, sr, 59)
+    assert len(out) == 59 * sr and abs(np.max(np.abs(out)) - 0.9) < 1e-6
+
+
+def test_ai_music_is_disclosed_and_flagged():
+    T = THEMES["manor"]
+    theme = T.THEMES[3]
+    plain = K.build_metadata(T, theme, "short", 5)["description"]
+    ai = K.build_metadata(T, theme, "short", 5, ai_music=True)["description"]
+    assert "no AI generation" in plain and "ACE-Step" not in plain
+    assert "no AI generation" not in ai and "AI music model" in ai and "ACE-Step 1.5" in ai
+
+
+def test_upload_sets_synthetic_media_only_when_asked(fast_upload):
+    sent = []
+
+    class Capture(_YouTube):
+        def insert(self, **kw):
+            sent.append(kw["body"]["status"])
+            return self.request
+    U.upload_video(Capture(_Request([(None, {"id": "A"})])), "v.mp4", "t", "d", [], synthetic=True)
+    U.upload_video(Capture(_Request([(None, {"id": "B"})])), "v.mp4", "t", "d", [])
+    assert sent[0].get("containsSyntheticMedia") is True
+    assert "containsSyntheticMedia" not in sent[1]
+
+
+def test_manor_workflow_ace_step_steps_cannot_fail_the_run():
+    import yaml
+    wf = yaml.safe_load(open(os.path.join(ROOT, ".github", "workflows", "publish-manor.yml"), encoding="utf-8"))
+    steps = next(iter(wf["jobs"].values()))["steps"]
+    ace = [s for s in steps if str(s.get("name", "")).startswith("ACE-Step")]
+    assert len(ace) >= 6
+    for s in ace:
+        assert s.get("continue-on-error") is True, s["name"]
+        assert "slot != '0'" in s.get("if", ""), s["name"]           # never on the feature slot
+    names = [s.get("name", "") for s in steps]
+    assert names.index("Produce video(s) + QC") > max(names.index(s["name"]) for s in ace)

@@ -17,6 +17,7 @@ import argparse
 import glob
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -124,7 +125,21 @@ def fit_title(title, limit=100):
     return cut.rstrip(" |-&,") + tail
 
 
-def build_metadata(T, theme, fmt, volume=None, hours=None):
+AI_MUSIC_LINE = ("\U0001F3B5 The music in this video was generated with ACE-Step 1.5, an "
+                 "open-source AI music model, and is unique to this upload.")
+
+
+def footer(T, ai_music=False):
+    """The channel footer. With ai_music, its 'no AI generation' line is
+    replaced by a plain disclosure -- the claim must stay true per upload."""
+    text = T.DESCRIPTION_FOOTER.format(brand=T.BRAND_NAME, tagline=T.BRAND_TAGLINE)
+    if not ai_music:
+        return text
+    out, n = re.subn(r"\U0001F3B5[^\n]*", lambda m: AI_MUSIC_LINE, text, count=1)
+    return out if n else text + "\n" + AI_MUSIC_LINE
+
+
+def build_metadata(T, theme, fmt, volume=None, hours=None, ai_music=False):
     title = theme["short_title"] if fmt == "short" else theme["long_title"]
     if fmt == "long" and hours:
         title = title.replace("14 Minute", f"{hours} Hours")
@@ -150,7 +165,7 @@ def build_metadata(T, theme, fmt, volume=None, hours=None):
         f"\U0001F3A7 How to use: play at a low, comfortable volume to {T.HOW_TO}.\n\n"
         f"Perfect for {T.PERFECT_FOR}.\n\n"
         f"{hashtags}"
-        + T.DESCRIPTION_FOOTER.format(brand=T.BRAND_NAME, tagline=T.BRAND_TAGLINE)
+        + footer(T, ai_music)
     )
     return {
         "theme": theme["key"],
@@ -171,10 +186,14 @@ def metadata_main(T):
     p.add_argument("--volume", type=int, default=None,
                    help="repeat number of this theme; adds 'Vol. N' to the title")
     p.add_argument("--hours", type=int, default=None, help="hours-long feature length")
+    p.add_argument("--ai-music", action="store_true",
+                   help="the music was made with ACE-Step: disclose it in the description")
     p.add_argument("--out", default="metadata.json")
     args = p.parse_args()
 
-    meta = build_metadata(T, T.resolve_theme(args.theme), args.format, args.volume, args.hours)
+    meta = build_metadata(T, T.resolve_theme(args.theme), args.format, args.volume, args.hours,
+                          ai_music=args.ai_music)
+    meta["containsSyntheticMedia"] = bool(args.ai_music)
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
     print(f"Wrote {args.out}")
@@ -319,6 +338,20 @@ def qc(T, fmt, video_path, target_sec=None):
     return {"duration_sec": round(dur, 2), "resolution": res, "problems": problems}
 
 
+def acestep_wanted(T, theme, fmt, env=None):
+    """Use ACE-Step for this upload? Only for formats the channel opted in
+    (themes.ACESTEP_FORMATS), only for themes with a caption and without exact
+    wellness tones (those stay with the synth), and only when the workflow
+    has made ACE-Step available (ACESTEP_BIN + ACESTEP_MODELS)."""
+    env = os.environ if env is None else env
+    if fmt not in getattr(T, "ACESTEP_FORMATS", ()):
+        return False
+    if theme["key"] not in getattr(T, "ACESTEP_CAPTIONS", {}) or T.synth_args(theme):
+        return False
+    binary, models = env.get("ACESTEP_BIN", ""), env.get("ACESTEP_MODELS", "")
+    return bool(binary and os.path.exists(binary) and models and os.path.isdir(models))
+
+
 def long_hours_for(T, d):
     """Hours for the feature due on day d if this channel makes hours-long
     features (LONG_HOURS_CYCLE, e.g. (3, 8, 10) -> successive features run 3h,
@@ -350,9 +383,19 @@ def produce_one(ch, theme, fmt, out_dir, seed, run_date, volume=None, hours=None
     length = (["--loop-seconds", str(LONG_AUDIO_LOOP_SECONDS)] if hours
               else ["--seconds", str(duration)])
     segment = ["--segment-seconds", str(LONG_SEGMENT_SECONDS)] if hours else []
-    run([sys.executable, os.path.join(SCRIPTS, "generate_theme_audio.py"),
-         "--theme", theme["synth"]] + length +
-        ["--seed", str(seed), "--out", audio] + variant + T.synth_args(theme))
+    engine = "synth"
+    if acestep_wanted(T, theme, fmt):
+        try:
+            run([sys.executable, os.path.join(SCRIPTS, "acestep_audio.py"),
+                 "--caption", T.ACESTEP_CAPTIONS[key], "--seconds", str(duration),
+                 "--seed", str(seed), "--out", audio] + variant)
+            engine = "acestep"
+        except subprocess.CalledProcessError:
+            print("  ! ACE-Step render failed; using the synth for this upload")
+    if engine == "synth":
+        run([sys.executable, os.path.join(SCRIPTS, "generate_theme_audio.py"),
+             "--theme", theme["synth"]] + length +
+            ["--seed", str(seed), "--out", audio] + variant + T.synth_args(theme))
     run([sys.executable, os.path.join(SCRIPTS, "make_animated_video.py"),
          "--audio", audio, "--duration-seconds", str(duration),
          "--width", str(width), "--height", str(height),
@@ -360,8 +403,9 @@ def produce_one(ch, theme, fmt, out_dir, seed, run_date, volume=None, hours=None
          "--topic", T.topic_for(key)] + segment + variant + ["--seed", str(seed), "--out", video])
     vol = ["--volume", str(volume)] if volume else []
     hrs = ["--hours", str(hours)] if hours else []
+    ai = ["--ai-music"] if engine == "acestep" else []
     run([sys.executable, ch.script("make_metadata.py"),
-         "--theme", key, "--format", fmt, "--out", meta] + vol + hrs)
+         "--theme", key, "--format", fmt, "--out", meta] + vol + hrs + ai)
     import llm_copy  # optional unique opening paragraph (OPENROUTER_API_KEY)
     llm_copy.enrich_metadata(meta, T.BRAND_NAME, theme, fmt, volume, seed)
 
@@ -383,6 +427,7 @@ def produce_one(ch, theme, fmt, out_dir, seed, run_date, volume=None, hours=None
         "video": os.path.relpath(video, ROOT),
         "thumbnail": thumbnail_rel,
         "metadata": os.path.relpath(meta, ROOT),
+        "music_engine": engine,
         "qc": report,
         "status": "queued" if not report["problems"] else "qc_failed",
     }
@@ -743,6 +788,7 @@ def publish_main(T):
         video_id = U.upload_video(
             youtube, video, meta["title"], meta["description"], meta.get("tags", []),
             category_id=meta.get("categoryId", CATEGORY_MUSIC), privacy=args.privacy,
+            synthetic=bool(meta.get("containsSyntheticMedia")),
         )
         if existing is not None:
             existing.add(U._norm_title(meta["title"]))

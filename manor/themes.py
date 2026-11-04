@@ -319,6 +319,39 @@ def topic_for(theme_key: str) -> str:
     """The --topic to pass to make_animated_video.py for this theme."""
     return TOPICS.get(theme_key, "neutral")
 
+# ---- ACE-Step 1.5 trial (AI music, CPU via acestep.cpp) ---------------------
+# Formats whose music is made by ACE-Step instead of the numpy synth. The
+# workflow builds acestep.cpp and restores its cached models; if anything
+# fails, that upload falls back to the synth. Uploads made this way say so in
+# their description and are flagged as synthetic media on YouTube.
+ACESTEP_FORMATS = ("short",)
+
+# What each theme's music should sound like (ACE-Step adds a per-upload mood,
+# key and tempo, and always renders instrumental).
+ACESTEP_CAPTIONS = {
+    "greenhouse_ruins": "fingerpicked acoustic guitar, distant soft thunder, dripping water, "
+                        "overgrown glasshouse ambience, calm ambient folk",
+    "rainy_cottage_garden": "soft rain, gentle acoustic guitar, sparse bowed upright bass, "
+                            "cozy cottage garden ambience, calm",
+    "misty_forest_floor": "soft wind through trees, sparse acoustic guitar, low bowed bass drone, "
+                          "misty forest ambience, slow",
+    "creek_hollow": "flowing stream water, small bubbles, bright fingerpicked acoustic guitar, "
+                    "peaceful creek ambience",
+    "ancient_grove": "deep wind, slow bowed upright bass melody, rare acoustic guitar accents, "
+                     "ancient forest ambience",
+    "thunder_garden": "rain and distant rolling thunder, gentle acoustic guitar line, "
+                      "garden before a storm, calm ambient",
+    "mossy_stonework": "minimal dripping water with long reverb, very sparse acoustic guitar, "
+                       "quiet overgrown stone ruins ambience",
+    "wildflower_meadow": "light wind, birdsong, cheerful bright acoustic guitar, "
+                         "sunlit meadow, gentle folk ambient",
+    "fernwood_path": "gentle creek, walking-pace acoustic guitar, sparse bowed bass, "
+                     "quiet woodland path ambience",
+    "twilight_greenhouse": "soft wind, far-off thunder, sparse reflective acoustic guitar, "
+                           "dusk, calm ambient",
+}
+
+
 DESCRIPTION_FOOTER = (
     "\n\n— {brand} — {tagline}\n\n"
     "\U0001F3A7 Best experienced with headphones or a good speaker at a low volume.\n"
