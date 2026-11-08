@@ -36,14 +36,17 @@ MAX_RETRIES = 8
 UPLOAD_CHUNK_BYTES = 64 * 1024 * 1024
 
 
-def get_service(prefix="YT"):
-    """Build a YouTube service from a set of env-var credentials.
+# YouTube API Services policy: one Google Cloud project per API client. This
+# repo is ONE client that publishes to several channels, so every channel uses
+# the same OAuth client (YT_CLIENT_ID / YT_CLIENT_SECRET, one project) and only
+# its own refresh token differs (each channel's owner authorised that client).
+# Never add a second project to get more quota -- request an extension instead.
+SHARED_CLIENT = ("YT_CLIENT_ID", "YT_CLIENT_SECRET")
 
-    `prefix` selects which OAuth project's secrets to use:
-      "YT"        -> YT_CLIENT_ID / YT_CLIENT_SECRET / YT_REFRESH_TOKEN   (default)
-      "YT_SHORTS" -> YT_SHORTS_* ...  (a separate Cloud project for Shorts, so
-                     Short uploads draw on their own 10,000-unit/day quota and
-                     never touch the long-form project's quota)
+
+def get_service(prefix="YT"):
+    """YouTube service for one channel: the app's single OAuth client plus
+    that channel's refresh token ({prefix}_REFRESH_TOKEN, e.g. HEARTH_YT_...).
 
     No `scopes` are pinned here on purpose: the refresh then uses whatever
     scopes the token was originally granted, so an upload-only token and a
@@ -52,8 +55,8 @@ def get_service(prefix="YT"):
     creds = Credentials(
         token=None,
         refresh_token=os.environ[f"{prefix}_REFRESH_TOKEN"],
-        client_id=os.environ[f"{prefix}_CLIENT_ID"],
-        client_secret=os.environ[f"{prefix}_CLIENT_SECRET"],
+        client_id=os.environ[SHARED_CLIENT[0]],
+        client_secret=os.environ[SHARED_CLIENT[1]],
         token_uri="https://oauth2.googleapis.com/token",
     )
     return build("youtube", "v3", credentials=creds)

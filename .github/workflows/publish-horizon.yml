@@ -26,7 +26,8 @@ name: daily-produce-horizon
 # PUBLIC. Without them, the assets are produced and saved as run artifacts
 # only. Use the workflow_dispatch "privacy" input to override to
 # private/unlisted for a manual run.
-#   HORIZON_YT_CLIENT_ID, HORIZON_YT_CLIENT_SECRET, HORIZON_YT_REFRESH_TOKEN
+#   YT_CLIENT_ID, YT_CLIENT_SECRET   (the app's ONE OAuth client, shared by all channels)
+#   HORIZON_YT_REFRESH_TOKEN                (this channel's own authorisation of that client)
 
 on:
   schedule:
@@ -59,8 +60,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
-      HORIZON_YT_CLIENT_ID: ${{ secrets.HORIZON_YT_CLIENT_ID }}
-      HORIZON_YT_CLIENT_SECRET: ${{ secrets.HORIZON_YT_CLIENT_SECRET }}
+      # One OAuth client (one Cloud project) for every channel -- YouTube API policy.
+      YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+      YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
       HORIZON_YT_REFRESH_TOKEN: ${{ secrets.HORIZON_YT_REFRESH_TOKEN }}
     steps:
       - uses: actions/checkout@v5

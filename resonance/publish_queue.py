@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Upload every queued "Aether Resonance" asset in --out-dir to YouTube (PUBLIC by
-default). Needs RESONANCE_YT_CLIENT_ID / _CLIENT_SECRET / _REFRESH_TOKEN.
+default). Needs YT_CLIENT_ID / YT_CLIENT_SECRET (the app's one OAuth client) and RESONANCE_YT_REFRESH_TOKEN.
 
 All logic is shared with the other animated channels -- see
 scripts/channel_kit.py. This file only binds the "Aether Resonance" themes

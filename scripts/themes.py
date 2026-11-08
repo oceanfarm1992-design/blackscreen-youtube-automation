@@ -43,9 +43,8 @@ def long_hours_for(theme_key: str) -> int:
 
 # Daily publishing plan: 1 long-form + 1 Short/day (reduced from 6+6 -- less
 # upload volume, still a different, unique music each day via the rotation).
-# Quota is now trivial on a single project: 1*(1600+50) + 1*1600 = 3,250 /
-# 10,000 -- the YT_SHORTS second project is no longer needed for quota
-# headroom, but is left wired up (harmless if unused; see publish_queue.py).
+# All uploads go through the app's ONE Cloud project (YouTube API policy: one
+# project per API client; extra projects for quota get suspended).
 LONGS_PER_DAY = 1
 SHORTS_PER_DAY = 1
 DAILY_COUNT = LONGS_PER_DAY + SHORTS_PER_DAY
@@ -619,8 +618,7 @@ GLOBAL_TAGS = [
 PERFECT_FOR = "sleep, studying, meditation, relaxation, yoga, spa, and stress relief"
 
 # Auto-playlists: every long-form is added to its sub-niche playlist on upload
-# (playlistItems.insert, 50 units, routed through the YT_SHORTS project which
-# has the quota headroom). Shorts are skipped — they surface via the Shorts
+# (playlistItems.insert, 50 units, through the app's single project). Shorts are skipped — they surface via the Shorts
 # feed, where playlists add little. Playlists are found-or-created by TITLE,
 # so renaming a title here creates a NEW playlist.
 PLAYLISTS = {

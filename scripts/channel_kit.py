@@ -9,9 +9,10 @@ thin entry points (produce.py, make_metadata.py, publish_queue.py) that hand
 their themes module to the functions here. Rendering, metadata, QC and
 upload logic live once, in this file, so a fix reaches all six channels.
 
-A channel's asset folder (assets/<folder>/) and upload secrets
-(<FOLDER>_YT_CLIENT_ID / _CLIENT_SECRET / _REFRESH_TOKEN) are derived from
-its folder name, e.g. hearth/ -> assets/hearth/, HEARTH_YT_*.
+A channel's asset folder (assets/<folder>/) and refresh-token secret
+(<FOLDER>_YT_REFRESH_TOKEN) are derived from its folder name, e.g. hearth/ ->
+assets/hearth/, HEARTH_YT_REFRESH_TOKEN. Every channel shares the app's ONE
+OAuth client (YT_CLIENT_ID / YT_CLIENT_SECRET): one Cloud project per API client.
 """
 import argparse
 import glob
@@ -822,7 +823,8 @@ def publish_main(T):
     ch = Channel(T)
     p = argparse.ArgumentParser(
         description=f"Upload every queued {T.BRAND_NAME} asset in --out-dir to YouTube. "
-                    f"Needs {ch.secret_prefix}_CLIENT_ID / _CLIENT_SECRET / _REFRESH_TOKEN.")
+                    f"Needs YT_CLIENT_ID / YT_CLIENT_SECRET (the app's one OAuth client) "
+                    f"and {ch.secret_prefix}_REFRESH_TOKEN.")
     p.add_argument("--out-dir", default="out")
     p.add_argument("--privacy", default="public", choices=["private", "unlisted", "public"])
     args = p.parse_args()

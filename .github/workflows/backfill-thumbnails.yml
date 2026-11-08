@@ -34,23 +34,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      AETHER_YT_CLIENT_ID: ${{ secrets.AETHER_YT_CLIENT_ID }}
-      AETHER_YT_CLIENT_SECRET: ${{ secrets.AETHER_YT_CLIENT_SECRET }}
+      # One OAuth client (one Cloud project) for every channel -- YouTube API policy.
+      YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+      YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
       AETHER_YT_REFRESH_TOKEN: ${{ secrets.AETHER_YT_REFRESH_TOKEN }}
-      HEARTH_YT_CLIENT_ID: ${{ secrets.HEARTH_YT_CLIENT_ID }}
-      HEARTH_YT_CLIENT_SECRET: ${{ secrets.HEARTH_YT_CLIENT_SECRET }}
       HEARTH_YT_REFRESH_TOKEN: ${{ secrets.HEARTH_YT_REFRESH_TOKEN }}
-      SANCTUARY_YT_CLIENT_ID: ${{ secrets.SANCTUARY_YT_CLIENT_ID }}
-      SANCTUARY_YT_CLIENT_SECRET: ${{ secrets.SANCTUARY_YT_CLIENT_SECRET }}
       SANCTUARY_YT_REFRESH_TOKEN: ${{ secrets.SANCTUARY_YT_REFRESH_TOKEN }}
-      HORIZON_YT_CLIENT_ID: ${{ secrets.HORIZON_YT_CLIENT_ID }}
-      HORIZON_YT_CLIENT_SECRET: ${{ secrets.HORIZON_YT_CLIENT_SECRET }}
       HORIZON_YT_REFRESH_TOKEN: ${{ secrets.HORIZON_YT_REFRESH_TOKEN }}
-      RESONANCE_YT_CLIENT_ID: ${{ secrets.RESONANCE_YT_CLIENT_ID }}
-      RESONANCE_YT_CLIENT_SECRET: ${{ secrets.RESONANCE_YT_CLIENT_SECRET }}
       RESONANCE_YT_REFRESH_TOKEN: ${{ secrets.RESONANCE_YT_REFRESH_TOKEN }}
-      MANOR_YT_CLIENT_ID: ${{ secrets.MANOR_YT_CLIENT_ID }}
-      MANOR_YT_CLIENT_SECRET: ${{ secrets.MANOR_YT_CLIENT_SECRET }}
       MANOR_YT_REFRESH_TOKEN: ${{ secrets.MANOR_YT_REFRESH_TOKEN }}
     steps:
       - uses: actions/checkout@v5

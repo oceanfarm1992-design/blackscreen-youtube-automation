@@ -26,7 +26,8 @@ name: daily-produce-sanctuary
 # PUBLIC. Without them, the assets are produced and saved as run artifacts
 # only. Use the workflow_dispatch "privacy" input to override to
 # private/unlisted for a manual run.
-#   SANCTUARY_YT_CLIENT_ID, SANCTUARY_YT_CLIENT_SECRET, SANCTUARY_YT_REFRESH_TOKEN
+#   YT_CLIENT_ID, YT_CLIENT_SECRET   (the app's ONE OAuth client, shared by all channels)
+#   SANCTUARY_YT_REFRESH_TOKEN                (this channel's own authorisation of that client)
 
 on:
   schedule:
@@ -64,8 +65,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
-      SANCTUARY_YT_CLIENT_ID: ${{ secrets.SANCTUARY_YT_CLIENT_ID }}
-      SANCTUARY_YT_CLIENT_SECRET: ${{ secrets.SANCTUARY_YT_CLIENT_SECRET }}
+      # One OAuth client (one Cloud project) for every channel -- YouTube API policy.
+      YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+      YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
       SANCTUARY_YT_REFRESH_TOKEN: ${{ secrets.SANCTUARY_YT_REFRESH_TOKEN }}
     steps:
       - uses: actions/checkout@v5

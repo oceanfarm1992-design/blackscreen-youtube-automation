@@ -56,8 +56,8 @@ scripts/produce.py --slot N        (N = 0..11, one video per run)
 
 .github/workflows/publish.yml (12 crons/day, every 2h)
    → maps each cron to a slot, runs produce.py --slot N, then (if YT secrets
-     are set) uploads as PUBLIC — longs via the main project, Shorts via the
-     YT_SHORTS project. One video per run so runs never overlap.
+     are set) uploads as PUBLIC through the app's single Cloud project.
+     One video per run so runs never overlap.
 ```
 
 Audio is **synthesized from numpy every run** (no samples), so each upload is original;
@@ -101,11 +101,11 @@ If the three `YT_*` secrets are set, the daily workflow uploads the day's assets
 produced and saved as run artifacts only. See [PLAN.md](PLAN.md) for the one-time
 OAuth setup and the guardrails (API quota, content-policy, token expiry).
 
-> **YouTube API quota:** the default is 10,000 units/day **per Cloud project** and each
-> upload costs 1,600 units. Uploads are split across two projects so neither is exceeded:
-> **6 long-forms** → main project (6 × 1,650 = 9,900, *tight* — 100 units of headroom) and
-> **6 Shorts** → the `YT_SHORTS` project (6 × 1,600 = 9,600). Set `YT_SHORTS_CLIENT_ID` /
-> `YT_SHORTS_CLIENT_SECRET` / `YT_SHORTS_REFRESH_TOKEN` (a 2nd Cloud project's OAuth for the
-> same channel) to enable the split; without them, Shorts fall back to the main project and
-> blow past the quota. Raising `LONGS_PER_DAY`/`SHORTS_PER_DAY` in `themes.py` must keep
-> **each project** under 10,000, or the extra uploads fail with `quotaExceeded`.
+> **One Google Cloud project for the whole app.** The YouTube API Services policy allows
+> one project per API client; using several projects that act as one (for example a
+> second project to get more quota) gets them restricted and suspended. Every channel
+> therefore uses the same OAuth client (`YT_CLIENT_ID` / `YT_CLIENT_SECRET`) with its own
+> refresh token (`YT_REFRESH_TOKEN`, `HEARTH_YT_REFRESH_TOKEN`, ...), minted with
+> `scripts/get_refresh_token.py` using that one client. If the project's daily quota
+> (Cloud Console → APIs & Services → YouTube Data API v3 → Quotas) ever runs out,
+> request a quota extension through Google's audit form -- never add a project.
