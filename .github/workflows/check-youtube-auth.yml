@@ -1,0 +1,37 @@
+name: check-youtube-auth
+
+# Run by hand after (re)signing in channels. Read-only: for each of the 7
+# channels it asks YouTube which channel its token belongs to (1 quota unit
+# each) through the app's ONE OAuth client, and shows a table in the run
+# summary. Uploads nothing.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # One OAuth client (one Cloud project) for every channel -- YouTube API policy.
+      YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+      YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+      YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+      HEARTH_YT_REFRESH_TOKEN: ${{ secrets.HEARTH_YT_REFRESH_TOKEN }}
+      AETHER_YT_REFRESH_TOKEN: ${{ secrets.AETHER_YT_REFRESH_TOKEN }}
+      SANCTUARY_YT_REFRESH_TOKEN: ${{ secrets.SANCTUARY_YT_REFRESH_TOKEN }}
+      HORIZON_YT_REFRESH_TOKEN: ${{ secrets.HORIZON_YT_REFRESH_TOKEN }}
+      RESONANCE_YT_REFRESH_TOKEN: ${{ secrets.RESONANCE_YT_REFRESH_TOKEN }}
+      MANOR_YT_REFRESH_TOKEN: ${{ secrets.MANOR_YT_REFRESH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Check every channel's sign-in
+        run: python scripts/check_youtube_auth.py --summary "$GITHUB_STEP_SUMMARY"
