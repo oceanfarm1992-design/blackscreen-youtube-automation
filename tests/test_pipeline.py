@@ -820,3 +820,32 @@ def test_no_workflow_uses_a_second_cloud_project(wf):
 def test_main_channel_publishes_through_one_project():
     src = open(os.path.join(SCRIPTS, "publish_queue.py"), encoding="utf-8").read()
     assert "YT_SHORTS" not in src and 'get_service("YT")' in src
+
+
+def test_sign_in_check_spots_the_wrong_channel(monkeypatch):
+    C = load("scripts", "check_youtube_auth")
+    assert C.names_match("Hearth & Quill", "Hearth and Quill")
+    assert C.names_match("The Static Horizon", "The Static Horizon - Lofi")
+    assert not C.names_match("Moss & Manor", "Meditated Sleeping")
+    assert set(C.CHANNELS) == {"YT", "HEARTH_YT", "AETHER_YT", "SANCTUARY_YT", "HORIZON_YT",
+                               "RESONANCE_YT", "MANOR_YT"}
+
+    class Svc:
+        def __init__(self, title):
+            self.title = title
+
+        def channels(self):
+            return self
+
+        def list(self, **_):
+            return self
+
+        def execute(self):
+            return {"items": [{"id": "UC1", "snippet": {"title": self.title}}]}
+    monkeypatch.setenv("MANOR_YT_REFRESH_TOKEN", "t")
+    monkeypatch.setattr(U, "get_service", lambda prefix: Svc("Meditated Sleeping"))
+    assert C.check("MANOR_YT", "Moss & Manor")[0] == "WRONG CHANNEL"
+    monkeypatch.setattr(U, "get_service", lambda prefix: Svc("Moss & Manor"))
+    assert C.check("MANOR_YT", "Moss & Manor")[0] == "OK"
+    monkeypatch.delenv("MANOR_YT_REFRESH_TOKEN")
+    assert C.check("MANOR_YT", "Moss & Manor")[0] == "MISSING"
