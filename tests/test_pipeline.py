@@ -780,3 +780,43 @@ def test_wellness_tones_stay_exact_and_the_music_is_in_their_key():
     assert abs(f[np.argmax(np.abs(np.fft.rfft(under[:, 0])))] - 330) < 0.5
     r = A.build_request("x", 59, 1234, variant=4, key_root="C")
     assert r["keyscale"] == "C major" and A.build_request("x", 59, 1234, 5, "C")["keyscale"] == "C minor"
+
+
+# --------------------------------------------------------------------------- #
+# YouTube API policy: one Google Cloud project per API client. This repo is one
+# client publishing to several channels, so every channel must use the same
+# OAuth client; only the refresh token differs. Several projects "acting as
+# one" (e.g. a second project for quota) got HEARTHYT restricted.
+
+def test_every_channel_uses_the_one_shared_oauth_client(monkeypatch):
+    seen = []
+
+    class FakeCreds:
+        def __init__(self, **kw):
+            seen.append(kw)
+    monkeypatch.setattr(U, "Credentials", FakeCreds)
+    monkeypatch.setattr(U, "build", lambda *a, **k: "svc")
+    monkeypatch.setenv("YT_CLIENT_ID", "shared-id")
+    monkeypatch.setenv("YT_CLIENT_SECRET", "shared-secret")
+    for prefix in ("YT", "HEARTH_YT", "MANOR_YT"):
+        monkeypatch.setenv(f"{prefix}_REFRESH_TOKEN", f"tok-{prefix}")
+        if prefix != "YT":  # a leftover per-channel client must be ignored
+            monkeypatch.setenv(f"{prefix}_CLIENT_ID", f"OTHER-PROJECT-{prefix}")
+        U.get_service(prefix)
+    assert {c["client_id"] for c in seen} == {"shared-id"}
+    assert {c["client_secret"] for c in seen} == {"shared-secret"}
+    assert [c["refresh_token"] for c in seen] == ["tok-YT", "tok-HEARTH_YT", "tok-MANOR_YT"]
+
+
+@pytest.mark.parametrize("wf", sorted(os.listdir(os.path.join(ROOT, ".github", "workflows"))))
+def test_no_workflow_uses_a_second_cloud_project(wf):
+    text = open(os.path.join(ROOT, ".github", "workflows", wf), encoding="utf-8").read()
+    assert not re.search(r"secrets\.[A-Z_]+_YT_CLIENT_(ID|SECRET)", text), wf
+    assert "YT_SHORTS" not in text, wf
+    if re.search(r"secrets\.[A-Z_]*REFRESH_TOKEN", text):
+        assert "secrets.YT_CLIENT_ID" in text and "secrets.YT_CLIENT_SECRET" in text, wf
+
+
+def test_main_channel_publishes_through_one_project():
+    src = open(os.path.join(SCRIPTS, "publish_queue.py"), encoding="utf-8").read()
+    assert "YT_SHORTS" not in src and 'get_service("YT")' in src

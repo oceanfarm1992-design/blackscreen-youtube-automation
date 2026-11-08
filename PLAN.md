@@ -2,9 +2,8 @@
 
 The **code is done and verified**: the daily workflow produces the day's batch — **6
 long-forms (10h) + 6 Shorts (59s) = 12 videos**, one per run every 2h — brands them
-`#0D0D0D`, writes SEO metadata, and QCs durations. Long-forms upload through the main Cloud
-project; Shorts upload through a **separate Cloud project** (`YT_SHORTS_*`) so each project
-stays under its own 10,000-unit/day quota. What remains is optional account setup so the
+`#0D0D0D`, writes SEO metadata, and QCs durations. Everything uploads through **one** Cloud
+project (YouTube API policy: one project per API client -- see Guardrails). What remains is optional account setup so the
 videos can be uploaded to your channel.
 
 Legend: 🤖 = automated · 🙋 = you do it once
@@ -55,12 +54,11 @@ Repo → **Settings → Secrets and variables → Actions**. Add the three value
 | `YT_CLIENT_ID` | from the main OAuth client (long-forms) |
 | `YT_CLIENT_SECRET` | from the main OAuth client |
 | `YT_REFRESH_TOKEN` | the minted long-lived token |
-| `YT_SHORTS_CLIENT_ID` | from the **2nd** OAuth client, Shorts project |
-| `YT_SHORTS_CLIENT_SECRET` | from the 2nd OAuth client |
-| `YT_SHORTS_REFRESH_TOKEN` | long-lived token for the same channel, 2nd project |
 
-The `YT_SHORTS_*` set is **optional** — if absent, Shorts fall back to the main project
-(watch the combined quota). With it, Shorts draw on their own 10,000-unit/day quota.
+The other channels reuse `YT_CLIENT_ID` / `YT_CLIENT_SECRET` and only add their own
+`<CHANNEL>_YT_REFRESH_TOKEN` (`get_refresh_token.py --prefix HEARTH_YT ...` with the same
+client file). **Never create a second project for extra quota** -- Google treats several
+projects acting as one app as quota circumvention and suspends them.
 
 Once these exist, the daily run uploads the day's 12 videos as **public**. No Google Sheet
 or service account is needed — the musics are chosen by the date.
@@ -80,11 +78,10 @@ or service account is needed — the musics are chosen by the date.
 
 ## Guardrails (these decide whether the channel survives)
 
-- **API quota:** 10,000 units/day **per Cloud project**; ~1,600 per upload. Uploads are
-  split across two projects: long-forms → main project (6 × 1,650 = **9,900, tight**),
-  Shorts → `YT_SHORTS` project (6 × 1,600 = 9,600). Each stays under the free cap, but the
-  long side has only 100 units of headroom — one retry could tip it over. Raising
-  `LONGS_PER_DAY`/`SHORTS_PER_DAY` in `themes.py` must keep **each project** under 10,000.
+- **API quota:** one Cloud project for the whole app (all channels). Google restricts
+  and then suspends projects that "act as one" to get around quota. If the daily quota
+  (Cloud Console → YouTube Data API v3 → Quotas) runs short, request an extension through
+  Google's audit and quota-extension form instead of adding projects.
 - **Theme library (11) < 12 slots:** one music repeats each day (as a long + a Short).
   Add a 12th theme to `THEMES` in `themes.py` if you want all 12 distinct.
 - **Daily upload count:** 12 uploads/day may bump YouTube's per-channel daily upload limit

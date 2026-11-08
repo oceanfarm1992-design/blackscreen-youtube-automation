@@ -25,9 +25,10 @@ name: daily-produce
 # the day's videos are uploaded to the channel as PUBLIC. Without them, the assets
 # are produced and saved as run artifacts only. Use the workflow_dispatch "privacy"
 # input to override to private/unlisted for a manual run.
-#   YT_CLIENT_ID, YT_CLIENT_SECRET, YT_REFRESH_TOKEN        - main OAuth project (longs)
-#   YT_SHORTS_CLIENT_ID, YT_SHORTS_CLIENT_SECRET,
-#   YT_SHORTS_REFRESH_TOKEN                                 - 2nd OAuth project (Shorts).
+#   YT_CLIENT_ID, YT_CLIENT_SECRET   (the app's ONE OAuth client, shared by all channels)
+#   YT_REFRESH_TOKEN                 (this channel's own authorisation of that client)
+#   One Google Cloud project for every upload: a second project for extra quota
+#   breaks the YouTube API Services policy. Need more? Request a quota extension.
 #     If absent, Shorts fall back to the main project (watch the combined quota).
 
 on:
@@ -70,9 +71,6 @@ jobs:
       YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
       YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
       YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
-      YT_SHORTS_CLIENT_ID: ${{ secrets.YT_SHORTS_CLIENT_ID }}
-      YT_SHORTS_CLIENT_SECRET: ${{ secrets.YT_SHORTS_CLIENT_SECRET }}
-      YT_SHORTS_REFRESH_TOKEN: ${{ secrets.YT_SHORTS_REFRESH_TOKEN }}
     steps:
       - uses: actions/checkout@v5
 
@@ -240,7 +238,7 @@ jobs:
           done
 
       - name: Upload to YouTube (only if secrets are set)
-        if: ${{ (env.YT_REFRESH_TOKEN != '' || env.YT_SHORTS_REFRESH_TOKEN != '') && github.event.inputs.upload != 'false' }}
+        if: ${{ env.YT_REFRESH_TOKEN != '' && github.event.inputs.upload != 'false' }}
         env:
           PRIVACY: ${{ github.event.inputs.privacy || 'public' }}
         run: |

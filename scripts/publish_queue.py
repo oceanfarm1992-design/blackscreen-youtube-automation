@@ -27,12 +27,6 @@ if hasattr(sys.stdout, "reconfigure"):
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def _shorts_project_configured():
-    """True only if a full second Cloud project is set up for Shorts."""
-    return all(os.environ.get(f"YT_SHORTS_{k}")
-               for k in ("CLIENT_ID", "CLIENT_SECRET", "REFRESH_TOKEN"))
-
-
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--out-dir", default="out")
@@ -44,21 +38,16 @@ def main():
         print(f"No manifests found in {args.out_dir}; nothing to publish.")
         return
 
-    # Shorts upload through a separate Cloud project (its own quota) when its
-    # secrets are present; otherwise they fall back to the main project so the
-    # pipeline keeps working unchanged until the 2nd project is configured.
-    use_shorts_project = _shorts_project_configured()
-    services = {}  # prefix -> built service, so each project authenticates once
+    # One project, one OAuth client for every upload (YouTube API policy: no
+    # extra projects for extra quota -- see upload_youtube.SHARED_CLIENT).
+    services = {}
 
     def service_for(fmt):
-        prefix = "YT_SHORTS" if (fmt == "short" and use_shorts_project) else "YT"
-        if prefix not in services:
-            services[prefix] = U.get_service(prefix)
-            print(f"[auth] {fmt} uploads -> {prefix} project")
-        return services[prefix]
+        if "YT" not in services:
+            services["YT"] = U.get_service("YT")
+        return services["YT"]
 
-    # Both projects upload to the same channel, so one list of its recent
-    # titles serves both; a title already there is skipped, never re-posted.
+    # The channel's recent titles: a title already there is skipped, never re-posted.
     existing = []  # [set | None], read lazily on the first upload
 
     def already_on_channel(youtube, title):
@@ -66,20 +55,19 @@ def main():
             existing.append(U.recent_upload_titles(youtube))
         return U.is_duplicate_title(existing[0], title)
 
-    # Auto-playlists: long-forms are added to their sub-niche playlist, routed
-    # through the YT_SHORTS project (it has the quota headroom; 50 units/add).
-    # Needs the broader "youtube" scope on that token — until it's re-minted
-    # with it, the API returns 403 and we just skip, never failing the upload.
+    # Auto-playlists: long-forms are added to their sub-niche playlist (50
+    # units/add) through the same single project. Needs the broader "youtube"
+    # scope on the token -- without it the API returns 403 and we just skip,
+    # never failing the upload.
     playlist_ids = {}  # title -> id, resolved once per run
 
     def add_long_to_playlist(man, video_id):
         pl = T.playlist_for(man["theme"])
-        if not (pl and use_shorts_project):
+        if not pl:
             man["playlist_status"] = "skipped"
             return
         try:
-            svc = services.get("YT_SHORTS") or U.get_service("YT_SHORTS")
-            services["YT_SHORTS"] = svc
+            svc = service_for("long")
             if pl["title"] not in playlist_ids:
                 playlist_ids[pl["title"]] = U.find_or_create_playlist(
                     svc, pl["title"], pl["description"])

@@ -27,7 +27,8 @@ name: daily-produce-aether
 # PUBLIC. Without them, the assets are produced and saved as run artifacts
 # only. Use the workflow_dispatch "privacy" input to override to
 # private/unlisted for a manual run.
-#   AETHER_YT_CLIENT_ID, AETHER_YT_CLIENT_SECRET, AETHER_YT_REFRESH_TOKEN
+#   YT_CLIENT_ID, YT_CLIENT_SECRET   (the app's ONE OAuth client, shared by all channels)
+#   AETHER_YT_REFRESH_TOKEN                (this channel's own authorisation of that client)
 
 on:
   schedule:
@@ -69,8 +70,9 @@ jobs:
     # Hours-long features render a fresh 1h animation (~70 min) before looping it.
     timeout-minutes: 330
     env:
-      AETHER_YT_CLIENT_ID: ${{ secrets.AETHER_YT_CLIENT_ID }}
-      AETHER_YT_CLIENT_SECRET: ${{ secrets.AETHER_YT_CLIENT_SECRET }}
+      # One OAuth client (one Cloud project) for every channel -- YouTube API policy.
+      YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+      YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
       AETHER_YT_REFRESH_TOKEN: ${{ secrets.AETHER_YT_REFRESH_TOKEN }}
     steps:
       - uses: actions/checkout@v5

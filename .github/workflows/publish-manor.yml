@@ -27,7 +27,8 @@ name: daily-produce-manor
 # PUBLIC. Without them, the assets are produced and saved as run artifacts
 # only. Use the workflow_dispatch "privacy" input to override to
 # private/unlisted for a manual run.
-#   MANOR_YT_CLIENT_ID, MANOR_YT_CLIENT_SECRET, MANOR_YT_REFRESH_TOKEN
+#   YT_CLIENT_ID, YT_CLIENT_SECRET   (the app's ONE OAuth client, shared by all channels)
+#   MANOR_YT_REFRESH_TOKEN                (this channel's own authorisation of that client)
 
 on:
   schedule:
@@ -60,8 +61,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
-      MANOR_YT_CLIENT_ID: ${{ secrets.MANOR_YT_CLIENT_ID }}
-      MANOR_YT_CLIENT_SECRET: ${{ secrets.MANOR_YT_CLIENT_SECRET }}
+      # One OAuth client (one Cloud project) for every channel -- YouTube API policy.
+      YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+      YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
       MANOR_YT_REFRESH_TOKEN: ${{ secrets.MANOR_YT_REFRESH_TOKEN }}
     steps:
       - uses: actions/checkout@v5
