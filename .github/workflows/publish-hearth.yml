@@ -69,9 +69,9 @@ jobs:
       YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
       HEARTH_YT_REFRESH_TOKEN: ${{ secrets.HEARTH_YT_REFRESH_TOKEN }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
@@ -109,7 +109,7 @@ jobs:
       - name: "ACE-Step: get acestep.cpp (pinned, MIT)"
         if: steps.slot.outputs.slot != '0'
         continue-on-error: true
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           repository: ServeurpersoCom/acestep.cpp
           ref: de858d8e1a94f0e1939cf9bdd8ff7d9631953077
@@ -121,7 +121,7 @@ jobs:
         id: ace-build
         if: steps.slot.outputs.slot != '0'
         continue-on-error: true
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: acestep.cpp/build
           key: acestep-cpp-build-de858d8-openblas-v1
@@ -139,7 +139,7 @@ jobs:
       - name: "ACE-Step: save build"
         if: steps.slot.outputs.slot != '0' && steps.ace-build.outputs.cache-hit != 'true'
         continue-on-error: true
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: acestep.cpp/build
           key: acestep-cpp-build-de858d8-openblas-v1
@@ -148,7 +148,7 @@ jobs:
         id: ace-models
         if: steps.slot.outputs.slot != '0'
         continue-on-error: true
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ~/.cache/ai-models/acestep15
           key: models-acestep15-dit-turbo-q4km-v1
@@ -167,7 +167,7 @@ jobs:
       - name: "ACE-Step: save models"
         if: steps.slot.outputs.slot != '0' && steps.ace-models.outputs.cache-hit != 'true'
         continue-on-error: true
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: ~/.cache/ai-models/acestep15
           key: models-acestep15-dit-turbo-q4km-v1
@@ -233,7 +233,7 @@ jobs:
 
       - name: Keep the rendered videos (test runs with upload=false)
         if: always() && github.event.inputs.upload == 'false'
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: videos-hearth-${{ github.run_id }}
           path: |
@@ -244,7 +244,7 @@ jobs:
 
       - name: Upload metadata, manifests + thumbnails as artifacts
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: metadata-hearth-${{ github.run_id }}
           path: |
