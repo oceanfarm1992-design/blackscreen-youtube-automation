@@ -8,7 +8,7 @@
 
 # Audio synthesis
 numpy>=1.26,<3
-soundfile>=0.12,<1
+soundfile>=0.14.0,<1
 
 # Procedural video frames + thumbnails
 Pillow>=13.0.0,<14
