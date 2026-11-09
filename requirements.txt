@@ -11,7 +11,7 @@ numpy>=1.26,<3
 soundfile>=0.12,<1
 
 # Procedural video frames + thumbnails
-Pillow>=10.0,<13
+Pillow>=13.0.0,<14
 
 # YouTube Data API v3 upload
 google-auth>=2.62.0,<3
