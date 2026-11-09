@@ -16,4 +16,4 @@ Pillow>=13.0.0,<14
 # YouTube Data API v3 upload
 google-auth>=2.62.0,<3
 google-auth-oauthlib>=1.5.0,<2
-google-api-python-client>=2.120,<3
+google-api-python-client>=2.201.0,<3
