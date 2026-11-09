@@ -44,9 +44,9 @@ jobs:
       RESONANCE_YT_REFRESH_TOKEN: ${{ secrets.RESONANCE_YT_REFRESH_TOKEN }}
       MANOR_YT_REFRESH_TOKEN: ${{ secrets.MANOR_YT_REFRESH_TOKEN }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
@@ -69,7 +69,7 @@ jobs:
 
       - name: Save rendered thumbnails
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: thumbnails-${{ github.event.inputs.channel }}-${{ github.run_id }}
           path: out_thumbs/*.png
