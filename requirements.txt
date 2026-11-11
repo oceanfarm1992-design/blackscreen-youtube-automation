@@ -7,7 +7,7 @@
 # 12 only deprecated). Raise a cap deliberately, after `python -m pytest`.
 
 # Audio synthesis
-numpy>=1.26,<3
+numpy>=2.5.4,<3
 soundfile>=0.14.0,<1
 
 # Procedural video frames + thumbnails
