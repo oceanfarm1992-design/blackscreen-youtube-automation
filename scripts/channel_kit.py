@@ -352,8 +352,9 @@ def feature_for(T, d):
 
 def no_upload_message(T, d, slot):
     if slot == 0:
-        return (f"No feature on {d}: one feature a week "
-                f"(next: {next_feature_day(T, d)}). Nothing to produce.")
+        rule = ("one feature a week" if d >= WEEKLY_START
+                else f"a feature every {_every(T)} days until {WEEKLY_START}")
+        return f"No feature on {d}: {rule} (next: {next_feature_day(T, d)}). Nothing to produce."
     return (f"No Short on {d}: three Shorts a week "
             f"(next: {next_short_day(T, d)}). Nothing to produce.")
 
