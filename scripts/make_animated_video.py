@@ -555,6 +555,8 @@ def main():
     p.add_argument("--dim", type=float, default=1.0,
                    help="overall brightness, 0..1 (e.g. 0.45 keeps a sleep channel near-dark)")
     p.add_argument("--out", default="animated.mp4")
+    p.add_argument("--info", default=None,
+                   help="write this render's look (JSON) for the video description")
     args = p.parse_args()
 
     seg = args.segment_seconds
@@ -570,6 +572,15 @@ def main():
         render(args.audio, args.duration_seconds, args.width, args.height, args.color,
                args.icon, args.topic, args.seed, args.out, variant=args.variant, dim=args.dim)
     print(f"Wrote {args.out} ({args.duration_seconds:.0f}s, {args.width}x{args.height})")
+    if args.info:
+        import json
+        look = pick_look(args.seed, args.topic, args.variant)
+        base = _rotate_hue(_hex_rgb(args.color), look["hue_shift"])
+        with open(args.info, "w", encoding="utf-8") as f:
+            json.dump({"topic": args.topic, "layer": look["layer"], "glow": look["glow"],
+                       "color": "%02x%02x%02x" % tuple(int(round(c * 255)) for c in base),
+                       "dim": args.dim,
+                       "loop_minutes": round(seg / 60) if 0 < seg < args.duration_seconds else None}, f)
 
 
 if __name__ == "__main__":

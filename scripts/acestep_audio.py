@@ -36,6 +36,10 @@ MOODS = ("soft and intimate", "warm and unhurried", "gentle, with space between 
          "airy and calm", "quiet and reflective")
 
 
+def mood_for(seed):
+    return MOODS[(int(seed) // 7) % len(MOODS)]
+
+
 def build_request(caption, seconds, seed, variant=None, key_root=None):
     v = int(variant) if variant is not None else int(seed)
     # A wellness theme's music is kept in the key of its tone; consecutive
@@ -44,7 +48,7 @@ def build_request(caption, seconds, seed, variant=None, key_root=None):
            else KEYS[(v * 5) % len(KEYS)])
     return {
         "synth_model": SYNTH_MODEL,
-        "caption": f"{caption}, {MOODS[(int(seed) // 7) % len(MOODS)]}, instrumental",
+        "caption": f"{caption}, {mood_for(seed)}, instrumental",
         "lyrics": "[Instrumental]",
         "bpm": 58 + int(seed) % 23,                  # 58-80 bpm
         "keyscale": key,                            # every key before one repeats
@@ -153,6 +157,8 @@ def main():
     p.add_argument("--key-root", default=None,
                    help="keep the music in this key (e.g. 'C' for 528 Hz)")
     p.add_argument("--out", required=True)
+    p.add_argument("--info", default=None,
+                   help="write what this render did (JSON) for the video description")
     args = p.parse_args()
     if not (args.bin and os.path.exists(args.bin) and args.models and os.path.isdir(args.models)):
         sys.exit("ACE-Step not available (ACESTEP_BIN / ACESTEP_MODELS)")
@@ -179,6 +185,12 @@ def main():
         label += " + own exact tones" + (" (leading)" if args.tones_lead else "")
     sf.write(args.out, finish(x, sr, args.seconds), sr)
     print(f"Wrote {args.out} ({args.seconds:.0f}s, {sr} Hz, {label})")
+    if args.info:
+        with open(args.info, "w", encoding="utf-8") as f:
+            json.dump({"engine": "acestep", "key": req["keyscale"], "bpm": req["bpm"],
+                       "mood": mood_for(args.seed),
+                       "bed_db": bed_level_db(args.seed) if args.bed else None,
+                       "tones_lead": bool(args.tones and args.tones_lead)}, f)
 
 
 if __name__ == "__main__":

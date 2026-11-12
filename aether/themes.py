@@ -39,6 +39,10 @@ DAILY_COUNT = LONGS_PER_DAY + SHORTS_PER_DAY
 # (LONGS_PER_DAY / SHORTS_PER_DAY above only describe the old daily
 # rotation, used to continue its Vol. numbers.)
 FEATURE_DAY_OFFSET = 1
+# From WEEKLY_START (channel_kit): this channel's one feature a week goes out
+# on Wednesday (day 2); every channel has its own day, so exactly one long
+# video goes out per day across all 7. Its 3 Shorts follow 2, 4 and 6 days later.
+WEEK_FEATURE_DAY = 2
 
 # Accent color (hex) for each theme's generative animated background --
 # drives the colorchannelmixer tint in make_animated_video.py. Chosen to

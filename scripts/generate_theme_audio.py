@@ -20,6 +20,7 @@ one inverse FFT), which is fast even for multi-minute loops, instead of per-samp
 IIR filtering in a Python loop.
 """
 import argparse
+import re
 
 import numpy as np
 import soundfile as sf
@@ -148,10 +149,15 @@ def _transpose_ratio(rng):
     """Pick one preset pitch-shift ratio for this render's melodic root(s).
     With --variant (the Vol. number) the key steps through every entry before
     repeating, so two consecutive uploads of a theme are never in one key."""
+    global _TRANSPOSED
     pick = rng.choice(_TRANSPOSE_SEMITONES)
     if _KEY_INDEX is not None:
         pick = _TRANSPOSE_SEMITONES[_KEY_INDEX]
+    _TRANSPOSED = int(pick)
     return 2.0 ** (pick / 12.0)
+
+
+_TRANSPOSED = None  # semitones this render's melody was moved, if it has one
 
 
 # Varispeed: the whole ambient bed is rendered slightly longer or shorter and
@@ -1841,6 +1847,8 @@ def main():
                    help="the upload's Vol. number: steps the key and the varispeed "
                         "so consecutive uploads of a theme never sound alike")
     p.add_argument("--out", default="audio.wav")
+    p.add_argument("--info", default=None,
+                   help="write what this render did (JSON) for the video description")
     args = p.parse_args()
 
     global _KEY_INDEX
@@ -1924,6 +1932,15 @@ def main():
 
     sf.write(args.out, stereo, SR)
     print(f"Wrote {args.out}: {len(stereo)/SR:.2f}s, layers=[{', '.join(layers)}], seed={args.seed}")
+    if args.info:
+        import json
+        vs_match = re.search(r"varispeed=([+-][0-9.]+)st", " ".join(layers))
+        with open(args.info, "w", encoding="utf-8") as f:
+            json.dump({"engine": "synth", "theme": args.theme,
+                       "transposed": _TRANSPOSED,
+                       "varispeed": float(vs_match.group(1)) if vs_match else None,
+                       "tone": args.tone, "beat": args.beat, "beat_type": args.beat_type,
+                       "bowl": bool(args.bowl), "texture": "texture" in layers}, f)
 
 
 if __name__ == "__main__":
