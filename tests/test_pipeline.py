@@ -54,16 +54,18 @@ def titles(folder, theme, fmt, volume):
 
 
 # --------------------------------------------------------------------------- #
-def scheduled_uploads(T, days):
-    """What the scheduler publishes from RULES_START: [(date, slot, theme, fmt, vol)]."""
+def scheduled_uploads(T, days, start=None):
+    """What the scheduler publishes from RULES_START (or start):
+    [(date, slot, theme, fmt, vol)] -- exactly what scheduled_slot picks."""
     out = []
+    start = start or K.RULES_START
     for i in range(days):
-        d = K.RULES_START + timedelta(days=i)
-        if K.is_feature_day(T, d):
-            theme, vol = K.feature_for(T, d)
-            out.append((d, 0, theme["key"], "long", vol))
-        theme, vol = K.short_for(T, d)
-        out.append((d, 1, theme["key"], "short", vol))
+        d = start + timedelta(days=i)
+        for slot in (0, 1):
+            pick = K.scheduled_slot(T, d, slot)
+            if pick:
+                theme, fmt, vol = pick
+                out.append((d, slot, theme["key"], fmt, vol))
     return out
 
 
@@ -80,18 +82,49 @@ def test_two_years_of_uploads_are_all_unique(folder):
 
 
 @pytest.mark.parametrize("folder", ALL)
-def test_one_short_daily_and_a_feature_every_4_days(folder):
+def test_before_weekly_start_a_short_daily_and_a_feature_every_4_days(folder):
     T = THEMES[folder]
-    ups = scheduled_uploads(T, 120)
+    days = (K.WEEKLY_START - K.RULES_START).days
+    ups = scheduled_uploads(T, days)
     shorts = [u for u in ups if u[3] == "short"]
     features = [u for u in ups if u[3] == "long"]
-    assert len(shorts) == 120 and len({u[0] for u in shorts}) == 120
-    gaps = {(b[0] - a[0]).days for a, b in zip(features, features[1:])}
-    assert gaps == {4} and len(features) == 30
-    # every theme gets both formats within a full rotation
-    L = len(T.THEMES)
-    assert {u[2] for u in shorts[:L]} == {t["key"] for t in T.THEMES}
-    assert {u[2] for u in scheduled_uploads(T, 4 * L) if u[3] == "long"} == {t["key"] for t in T.THEMES}
+    assert len(shorts) == days
+    assert {(b[0] - a[0]).days for a, b in zip(features, features[1:])} == {4}
+
+
+@pytest.mark.parametrize("folder", ALL)
+def test_weekly_one_feature_and_three_shorts_never_on_the_feature_day(folder):
+    T = THEMES[folder]
+    ups = scheduled_uploads(T, 7 * 30, start=K.WEEKLY_START)
+    shorts = [u for u in ups if u[3] == "short"]
+    features = [u for u in ups if u[3] == "long"]
+    assert len(features) == 30 and len(shorts) == 90
+    assert {(b[0] - a[0]).days for a, b in zip(features, features[1:])} == {7}
+    assert not {u[0] for u in shorts} & {u[0] for u in features}
+    for week in range(30):  # every 7-day window holds exactly 1 feature and 3 Shorts
+        lo = K.WEEKLY_START + timedelta(days=7 * week)
+        inwk = [u for u in ups if lo <= u[0] < lo + timedelta(days=7)]
+        assert sorted(u[3] for u in inwk) == ["long", "short", "short", "short"]
+    # every theme still gets both formats within a full rotation
+    keys = {t["key"] for t in T.THEMES}
+    assert {u[2] for u in shorts[:len(keys)]} == keys
+    assert {u[2] for u in features[:len(keys)]} == keys
+
+
+@pytest.mark.parametrize("folder", ALL)
+def test_weekly_cadence_continues_the_volumes_without_repeating(folder):
+    """The handover to the weekly cadence carries on from the next volume: no
+    gap is required, but no (theme, format, volume) may ever come back."""
+    T = THEMES[folder]
+    before = scheduled_uploads(T, (K.WEEKLY_START - K.RULES_START).days)
+    after = scheduled_uploads(T, 70, start=K.WEEKLY_START)
+    seen = {(u[2], u[3], u[4]) for u in before}
+    for u in after:
+        assert (u[2], u[3], u[4]) not in seen, u
+        seen.add((u[2], u[3], u[4]))
+    last_short = max(K.short_number(T, u[0]) for u in before if u[3] == "short")
+    first_short = min(K.short_number(T, u[0]) for u in after if u[3] == "short")
+    assert first_short == last_short + 1
 
 
 @pytest.mark.parametrize("folder", ALL)
@@ -126,9 +159,14 @@ def test_feature_days_are_staggered_across_channels():
     on_day = [sum(K.is_feature_day(THEMES[f], K.RULES_START + timedelta(days=i)) for f in ALL)
               for i in range(4)]
     assert sorted(on_day) == [1, 2, 2, 2], on_day
+    # weekly cadence: each channel its own weekday -> exactly one feature a day
+    for i in range(28):
+        d = K.WEEKLY_START + timedelta(days=i)
+        assert sum(K.is_feature_day(THEMES[f], d) for f in ALL) == 1, d
+    assert len({THEMES[f].WEEK_FEATURE_DAY for f in ALL}) == len(ALL)
     assert not any(K.is_feature_day(THEMES["aether"], K.RULES_START + timedelta(days=i))
                    and K.is_feature_day(THEMES["hearth"], K.RULES_START + timedelta(days=i))
-                   for i in range(8)), "the two hours-long channels should render on different days"
+                   for i in range(60)), "the two hours-long channels should render on different days"
 
 
 @pytest.mark.parametrize("folder", ALL)
@@ -217,7 +255,7 @@ def test_description_names_the_volume(folder):
 def test_verified_channels_rotate_3_8_10_hours():
     for folder in ANIMATED:
         T = THEMES[folder]
-        hours = [K.long_hours_for(T, u[0]) for u in scheduled_uploads(T, 24) if u[3] == "long"]
+        hours = [K.long_hours_for(T, u[0]) for u in scheduled_uploads(T, 60) if u[3] == "long"][:6]
         if folder in ("aether", "hearth"):
             assert hours == [3, 8, 10, 3, 8, 10]
         else:
@@ -849,3 +887,43 @@ def test_sign_in_check_spots_the_wrong_channel(monkeypatch):
     assert C.check("MANOR_YT", "Moss & Manor")[0] == "OK"
     monkeypatch.delenv("MANOR_YT_REFRESH_TOKEN")
     assert C.check("MANOR_YT", "Moss & Manor")[0] == "MISSING"
+
+
+# --------------------------------------------------------------------------- #
+# "Made for this video": every description names what was really made for it.
+
+def test_made_for_this_video_line_describes_the_real_render():
+    ai = K.making_of(
+        {"engine": "acestep", "key": "D minor", "bpm": 64, "mood": "soft and intimate",
+         "bed_db": -11.0, "bed_preset": "stream", "tones_lead": False},
+        {"topic": "water", "layer": "motes", "glow": True, "color": "15305f", "dim": 1.0})
+    assert "ACE-Step 1.5 in D minor at 64 bpm" in ai and "flowing stream" in ai
+    assert "11 dB under the music" in ai and "drifting bubbles" in ai and "deep blue" in ai
+    assert "wandering soft light" in ai and len(ai) < 450
+    tones = K.making_of({"engine": "acestep", "key": "C major", "bpm": 60, "mood": "airy and calm",
+                         "carrier": "528", "tones_lead": True}, {})
+    assert "exact 528 Hz tones" in tones and "lead" in tones
+    synth = K.making_of({"engine": "synth", "transposed": -2, "varispeed": 0.8, "tone": "432",
+                         "beat": "delta", "beat_type": "binaural"},
+                        {"topic": "void", "layer": "parallax", "color": "4b3f8f", "dim": 0.45,
+                         "loop_minutes": 30})
+    assert "our own Python synthesizer" in synth and "-2 semitones" in synth
+    assert "432 Hz tones and a delta binaural beat" in synth
+    assert "kept dim for sleep" in synth and "30-minute loop" in synth
+    assert ai != synth != tones
+    assert "pipeline" in K.making_of({}, {})                 # nothing recorded: no specific claims
+
+
+def test_made_for_this_video_goes_above_the_footer(tmp_path):
+    import json as _json
+    T = THEMES["manor"]
+    meta = K.build_metadata(T, T.THEMES[0], "short", 4)
+    mp, ap, vp = tmp_path / "m.json", tmp_path / "a.json", tmp_path / "v.json"
+    mp.write_text(_json.dumps(meta), encoding="utf-8")
+    ap.write_text(_json.dumps({"engine": "synth", "transposed": 3}), encoding="utf-8")
+    vp.write_text(_json.dumps({"topic": "water", "layer": "ripples", "color": "3a5a5a"}),
+                  encoding="utf-8")
+    assert K.add_making_of(str(mp), str(ap), str(vp))
+    desc = _json.loads(mp.read_text(encoding="utf-8"))["description"]
+    assert desc.index("Made for this video") < desc.index("\n\n— " + T.BRAND_NAME)
+    assert not K.add_making_of(str(tmp_path / "missing.json"), str(ap), str(vp))  # never raises

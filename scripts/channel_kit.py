@@ -261,8 +261,42 @@ def _volume_base(T):
     return max(0, (days * T.DAILY_COUNT + T.DAILY_COUNT - 1) // len(T.THEMES) + 1)
 
 
+# --------------------------------------------------------------------------- #
+# Weekly cadence (from WEEKLY_START): less volume while the channels go through
+# YouTube's monetization review, which looks for mass-produced uploads.
+#   * one feature a week per channel, on its own weekday (WEEK_FEATURE_DAY in
+#     themes.py, 0-6 relative to WEEKLY_START): one long video a day overall
+#   * three Shorts a week, 2, 4 and 6 days after the feature -- never on it
+# Both keep counting from where the old cadence stopped, so volume numbers
+# continue and no title can repeat across the handover. Days before
+# WEEKLY_START (a late-starting run for an earlier day) keep the old cadence.
+WEEKLY_START = date(2026, 11, 16)  # a Monday
+SHORT_WEEK_DAYS = (2, 4, 6)        # days after the channel's feature day
+
+
+def _week_day(T, d):
+    """0 = this channel's feature day, 1..6 the days after it."""
+    return ((d - WEEKLY_START).days - getattr(T, "WEEK_FEATURE_DAY", 0)) % 7
+
+
+def _weekly_count(T, d, days):
+    """How many days in [WEEKLY_START, d] fall on `days` (week-days)."""
+    n = (d - WEEKLY_START).days + 1
+    if n <= 0:
+        return 0
+    full, rest = divmod(n, 7)
+    first = _week_day(T, WEEKLY_START)
+    return full * len(days) + sum(1 for i in range(rest) if (first + i) % 7 in days)
+
+
 def is_feature_day(T, d):
+    if d >= WEEKLY_START:
+        return _week_day(T, d) == 0
     return (_rules_day(d) - _offset(T)) % _every(T) == 0
+
+
+def is_short_day(T, d):
+    return d < WEEKLY_START or _week_day(T, d) in SHORT_WEEK_DAYS
 
 
 def next_feature_day(T, d):
@@ -271,9 +305,29 @@ def next_feature_day(T, d):
     return d
 
 
+def next_short_day(T, d):
+    while not is_short_day(T, d):
+        d += timedelta(days=1)
+    return d
+
+
+def _old_feature_number(T, d):
+    return (_rules_day(d) - _offset(T)) // _every(T)
+
+
 def feature_number(T, d):
     """0-based index of the feature due on (or most recently before) day d."""
-    return (_rules_day(d) - _offset(T)) // _every(T)
+    if d < WEEKLY_START:
+        return _old_feature_number(T, d)
+    base = _old_feature_number(T, WEEKLY_START - timedelta(days=1)) + 1
+    return base + _weekly_count(T, d, (0,)) - 1
+
+
+def short_number(T, d):
+    """0-based index of the Short due on (or most recently before) day d."""
+    if d < WEEKLY_START:
+        return _rules_day(d)
+    return _rules_day(WEEKLY_START) + _weekly_count(T, d, SHORT_WEEK_DAYS) - 1
 
 
 def short_at(T, n):
@@ -289,11 +343,19 @@ def feature_at(T, k):
 
 
 def short_for(T, d):
-    return short_at(T, _rules_day(d))
+    return short_at(T, short_number(T, d))
 
 
 def feature_for(T, d):
     return feature_at(T, feature_number(T, d))
+
+
+def no_upload_message(T, d, slot):
+    if slot == 0:
+        return (f"No feature on {d}: one feature a week "
+                f"(next: {next_feature_day(T, d)}). Nothing to produce.")
+    return (f"No Short on {d}: three Shorts a week "
+            f"(next: {next_short_day(T, d)}). Nothing to produce.")
 
 
 def scheduled_slot(T, d, slot):
@@ -311,6 +373,8 @@ def scheduled_slot(T, d, slot):
             return None
         theme, vol = feature_for(T, d)
         return theme, "long", vol
+    if not is_short_day(T, d):
+        return None
     theme, vol = short_for(T, d)
     return theme, "short", vol
 
@@ -392,6 +456,135 @@ def acestep_ambience(T, theme):
     return TOPIC_AMBIENCE.get(T.topic_for(theme["key"]), "ambience_air")
 
 
+# --------------------------------------------------------------------------- #
+# "Made for this video": every description names what was actually made for
+# that upload -- the music's key and tempo, our own sound layers, and the
+# animation -- read from what each step recorded (its --info JSON). Unique per
+# upload, true, and the plain account of the process a reviewer looks for.
+
+BED_WORDS = {
+    "ambience_rain": "soft rain with far-off thunder",
+    "ambience_drips": "slow drips echoing in stone",
+    "ambience_meadow": "a light breeze and birdsong",
+    "ambience_wind_thunder": "soft wind and distant thunder",
+    "ambience_air": "dark, slowly swelling room air",
+    "ambience_night": "night air and crickets",
+    "stream": "a flowing stream with small bubbles",
+    "wind": "wind through trees",
+    "rain_drops": "gentle rain drops",
+    "thunderstorm": "rain and rolling thunder",
+    "ocean": "ocean waves",
+    "fireplace": "a crackling fireplace",
+    "brown_noise": "brown noise",
+    "white_noise": "white noise",
+    "pink_noise": "pink noise",
+}
+_MOTES = {"fire": "rising embers", "water": "drifting bubbles", "wind": "blown seeds",
+          "void": "twinkling stars", "stone": "settling dust", "neutral": "drifting motes of light"}
+_LAYERS = {"bands": "slow bands of light", "ripples": "spreading ripples",
+           "parallax": "a second veil of mist drifting across"}
+
+
+def info_path(media_path):
+    return os.path.splitext(media_path)[0] + "_info.json"
+
+
+def _read_info(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def _merge_info(path, **extra):
+    info = _read_info(path)
+    info.update({k: v for k, v in extra.items() if v is not None})
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(info, f)
+
+
+def color_name(hex_color):
+    import colorsys
+    r, g, b = (int(hex_color[i:i + 2], 16) / 255.0 for i in (0, 2, 4))
+    h, l, s = colorsys.rgb_to_hls(r, g, b)
+    if s < 0.12:
+        return "grey" if l > 0.25 else "charcoal"
+    names = ((15, "red"), (40, "amber"), (65, "gold"), (90, "olive"), (150, "green"),
+             (190, "teal"), (230, "blue"), (260, "indigo"), (290, "violet"),
+             (330, "magenta"), (361, "rose"))
+    deg = h * 360
+    hue = next(n for limit, n in names if deg < limit)
+    return ("deep " if l < 0.3 else "soft " if l > 0.6 else "") + hue
+
+
+def making_of(audio, video):
+    """The 'Made for this video' line from the recorded audio/video info."""
+    if audio.get("engine") == "acestep":
+        music = (f"music by ACE-Step 1.5 in {audio.get('key')} at {audio.get('bpm')} bpm "
+                 f"({audio.get('mood')})")
+        if audio.get("bed_preset") and audio.get("bed_db") is not None:
+            music += (f", mixed with {BED_WORDS.get(audio['bed_preset'], 'nature ambience')} "
+                      f"from our own Python sound engine, {abs(audio['bed_db']):.0f} dB under "
+                      "the music")
+        if audio.get("carrier"):
+            music += (f"; the exact {audio['carrier']} Hz tones are generated by our own code"
+                      + (" and lead, with the music beneath them" if audio.get("tones_lead")
+                         else " and sit softly underneath"))
+    elif not audio:
+        music = "music arranged by our own Python pipeline"
+    else:
+        music = "music composed by our own Python synthesizer"
+        bits = []
+        if audio.get("transposed"):
+            bits.append(f"moved {audio['transposed']:+d} semitones")
+        if audio.get("varispeed"):
+            bits.append(f"tape speed {audio['varispeed']:+.1f} semitones")
+        if bits:
+            music += " (" + ", ".join(bits) + ")"
+        if audio.get("tone"):
+            music += f", with exact {audio['tone']} Hz tones"
+            if audio.get("beat"):
+                music += f" and a {audio['beat']} {audio.get('beat_type') or 'binaural'} beat"
+    if video:
+        layer = video.get("layer")
+        words = _MOTES.get(video.get("topic"), _MOTES["neutral"]) if layer == "motes" else \
+            _LAYERS.get(layer, "slow light")
+        visual = f"visuals: {words} over a {color_name(video.get('color', '808080'))} cloud"
+        if video.get("glow"):
+            visual += " with a wandering soft light"
+        if (video.get("dim") or 1) < 1:
+            visual += ", kept dim for sleep"
+        visual += ", rendered by our own code"
+        if video.get("loop_minutes"):
+            visual += f" as a seamless {video['loop_minutes']}-minute loop"
+    else:
+        visual = "visuals rendered by our own code"
+    return f"\U0001F39B️ Made for this video: {music}; {visual}."
+
+
+def add_making_of(meta_path, audio_info_path, video_info_path):
+    """Insert the 'Made for this video' line just above the channel footer.
+    Never raises: a missing record just leaves the description as it was."""
+    try:
+        with open(meta_path, encoding="utf-8") as f:
+            meta = json.load(f)
+        line = making_of(_read_info(audio_info_path), _read_info(video_info_path))
+        desc = meta["description"]
+        cut = desc.rfind("\n\n— ")
+        desc = (desc[:cut] + "\n\n" + line + desc[cut:]) if cut >= 0 else desc + "\n\n" + line
+        if len(desc) > 4900:
+            return False
+        meta["description"], meta["making_of"] = desc, line
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, ensure_ascii=False, indent=2)
+        print(f"  + {line}")
+        return True
+    except Exception as e:
+        print(f"  (made-for-this-video line skipped: {e})")
+        return False
+
+
 def acestep_wanted(T, theme, fmt, env=None):
     """Use ACE-Step for this upload? Only for formats the channel opted in
     (themes.ACESTEP_FORMATS) and only when the workflow has made ACE-Step
@@ -436,9 +629,12 @@ def render_ai_music(T, theme, seconds, seed, variant, stem, audio):
     try:
         run([sys.executable, os.path.join(SCRIPTS, "acestep_audio.py"),
              "--caption", acestep_caption(T, theme), "--seconds", str(seconds),
-             "--seed", str(seed), "--out", audio] + variant + extra)
+             "--seed", str(seed), "--out", audio, "--info", info_path(audio)]
+            + variant + extra)
     except subprocess.CalledProcessError:
         return None
+    _merge_info(info_path(audio), bed_preset=preset if "--bed" in extra else None,
+                carrier=(theme.get("tone") if tone_args else None))
     return " and ".join(layers)
 
 
@@ -483,17 +679,20 @@ def produce_one(ch, theme, fmt, out_dir, seed, run_date, volume=None, hours=None
     if engine == "synth":
         run([sys.executable, os.path.join(SCRIPTS, "generate_theme_audio.py"),
              "--theme", theme["synth"]] + length +
-            ["--seed", str(seed), "--out", audio] + variant + T.synth_args(theme))
+            ["--seed", str(seed), "--out", audio, "--info", info_path(audio)]
+            + variant + T.synth_args(theme))
     run([sys.executable, os.path.join(SCRIPTS, "make_animated_video.py"),
          "--audio", audio, "--duration-seconds", str(duration),
          "--width", str(width), "--height", str(height),
          "--color", T.ACCENT_COLORS[key], "--icon", os.path.join(ch.brand, "icon.png"),
-         "--topic", T.topic_for(key)] + segment + variant + ["--seed", str(seed), "--out", video])
+         "--topic", T.topic_for(key)] + segment + variant +
+        ["--seed", str(seed), "--out", video, "--info", info_path(video)])
     vol = ["--volume", str(volume)] if volume else []
     hrs = ["--hours", str(hours)] if hours else []
     ai = ["--ai-music", "--ai-layers", ai_layers] if engine == "acestep" else []
     run([sys.executable, ch.script("make_metadata.py"),
          "--theme", key, "--format", fmt, "--out", meta] + vol + hrs + ai)
+    add_making_of(meta, info_path(audio), info_path(video))
     import llm_copy  # optional unique opening paragraph (OPENROUTER_API_KEY)
     llm_copy.enrich_metadata(meta, T.BRAND_NAME, theme, fmt, volume, seed)
 
@@ -580,14 +779,13 @@ def produce_main(T):
     if args.slot is not None:
         pick = scheduled_slot(T, run_date, args.slot)
         if pick is None:
-            print(f"No feature on {run_date}: features go out every {_every(T)} days "
-                  f"(next: {next_feature_day(T, run_date)}). Nothing to produce.")
+            print(no_upload_message(T, run_date, args.slot))
             return
         theme, fmt, vol = pick
         print(f"Slot {args.slot} for {run_date}: {theme['key']} {fmt} Vol. {vol}")
         results.append(one(theme, fmt, seed + args.slot, vol))
     elif args.shorts or args.longs:
-        k, n = feature_number(T, run_date), _rules_day(run_date)
+        k, n = feature_number(T, run_date), short_number(T, run_date)
         for i in range(args.longs):
             theme, vol = feature_at(T, k + i)
             results.append(one(theme, "long", seed + i * 10, vol))
@@ -598,8 +796,9 @@ def produce_main(T):
         if is_feature_day(T, run_date):
             theme, vol = feature_for(T, run_date)
             results.append(one(theme, "long", seed, vol))
-        theme, vol = short_for(T, run_date)
-        results.append(one(theme, "short", seed + 1, vol))
+        if is_short_day(T, run_date):
+            theme, vol = short_for(T, run_date)
+            results.append(one(theme, "short", seed + 1, vol))
     else:
         theme = T.resolve_theme(args.theme, run_date)
         formats = ["short", "long"] if args.format == "both" else [args.format]

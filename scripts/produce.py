@@ -131,7 +131,8 @@ def produce_one(theme, fmt, out_dir, hours, seed, run_date, volume=None):
         cmd = [sys.executable, mv, "--audio", audio, "--duration-seconds", str(seconds),
                "--width", str(width), "--height", str(height),
                "--color", T.accent_for(key), "--icon", ICON, "--topic", T.topic_for(key),
-               "--dim", str(T.VISUAL_DIM), "--seed", str(seed), "--out", video] + variant
+               "--dim", str(T.VISUAL_DIM), "--seed", str(seed), "--out", video,
+               "--info", K.info_path(video)] + variant
         if segment:
             cmd += ["--segment-seconds", str(segment)]
         run(cmd)
@@ -156,7 +157,8 @@ def produce_one(theme, fmt, out_dir, hours, seed, run_date, volume=None):
                 print("  ! ACE-Step render failed; using the synth for this upload")
         if ai_layers is None:
             run([sys.executable, gta, "--theme", theme["synth"], "--seconds", str(SHORT_SECONDS),
-                 "--seed", str(seed), "--out", audio] + variant + freq)
+                 "--seed", str(seed), "--out", audio, "--info", K.info_path(audio)]
+                + variant + freq)
         else:
             engine = "acestep"
         animate(SHORT_SECONDS, 1080, 1920)
@@ -170,11 +172,12 @@ def produce_one(theme, fmt, out_dir, hours, seed, run_date, volume=None):
              "--out", meta] + vol)
     else:
         run([sys.executable, gta, "--theme", theme["synth"], "--loop-seconds", str(LONG_LOOP_SECONDS),
-             "--seed", str(seed), "--out", audio] + variant + freq)
+             "--seed", str(seed), "--out", audio, "--info", K.info_path(audio)] + variant + freq)
         animate(hours * 3600, 1920, 1080, LONG_SEGMENT_SECONDS)
         run([sys.executable, mm, "--theme", key, "--format", "long", "--hours", str(hours),
              "--out", meta] + vol)
 
+    K.add_making_of(meta, K.info_path(audio), K.info_path(video))
     import llm_copy  # optional unique opening paragraph (OPENROUTER_API_KEY)
     llm_copy.enrich_metadata(meta, T.BRAND_NAME, theme, fmt, volume, seed)
 
@@ -244,22 +247,21 @@ def main():
     seed = args.seed if args.seed is not None else int(run_date.strftime("%Y%m%d")) * 1000
     os.makedirs(args.out_dir, exist_ok=True)
 
-    # Cadence shared with every channel (see channel_kit): a Short every day,
-    # a long-form every FEATURE_EVERY_DAYS days, each on its own full rotation.
+    # Cadence shared with every channel (see channel_kit): from WEEKLY_START one
+    # long-form and three Shorts a week, each on its own full rotation.
 
     results = []
     if args.slot is not None:
         pick = K.scheduled_slot(T, run_date, args.slot)
         if pick is None:
-            print(f"No long-form on {run_date}: they go out every {K._every(T)} days "
-                  f"(next: {K.next_feature_day(T, run_date)}). Nothing to produce.")
+            print(K.no_upload_message(T, run_date, args.slot))
             return
         theme, fmt, vol = pick
         print(f"Slot {args.slot} for {run_date}: {theme['key']} {fmt} Vol. {vol}")
         results.append(produce_one(theme, fmt, args.out_dir, args.hours, seed + args.slot,
                                    run_date, vol))
     elif args.shorts or args.longs:
-        k, n = K.feature_number(T, run_date), K._rules_day(run_date)
+        k, n = K.feature_number(T, run_date), K.short_number(T, run_date)
         for i in range(args.longs):
             theme, vol = K.feature_at(T, k + i)
             results.append(produce_one(theme, "long", args.out_dir, args.hours,
@@ -273,9 +275,10 @@ def main():
             theme, vol = K.feature_for(T, run_date)
             results.append(produce_one(theme, "long", args.out_dir, args.hours, seed,
                                        run_date, vol))
-        theme, vol = K.short_for(T, run_date)
-        results.append(produce_one(theme, "short", args.out_dir, args.hours, seed + 1,
-                                   run_date, vol))
+        if K.is_short_day(T, run_date):
+            theme, vol = K.short_for(T, run_date)
+            results.append(produce_one(theme, "short", args.out_dir, args.hours, seed + 1,
+                                       run_date, vol))
     else:
         theme = T.resolve_theme(args.theme, run_date)
         formats = ["short", "long"] if args.format == "both" else [args.format]

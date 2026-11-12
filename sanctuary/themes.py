@@ -32,6 +32,10 @@ DAILY_COUNT = LONGS_PER_DAY + SHORTS_PER_DAY
 # (LONGS_PER_DAY / SHORTS_PER_DAY above only describe the old daily
 # rotation, used to continue its Vol. numbers.)
 FEATURE_DAY_OFFSET = 2
+# From WEEKLY_START (channel_kit): this channel's one feature a week goes out
+# on Tuesday (day 1); every channel has its own day, so exactly one long
+# video goes out per day across all 7. Its 3 Shorts follow 2, 4 and 6 days later.
+WEEK_FEATURE_DAY = 1
 
 # Ordered rotation. `synth` names a function in scripts/generate_theme_audio.py.
 THEMES = [

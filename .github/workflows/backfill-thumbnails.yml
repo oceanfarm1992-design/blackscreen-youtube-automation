@@ -54,7 +54,15 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          sudo apt-get update && sudo apt-get install -y fonts-dejavu-core fonts-dejavu-extra
+          # Ubuntu's mirrors occasionally fail to resolve (Nov 11 cost two uploads):
+          # retry each download, and the whole install up to 3 times.
+          for i in 1 2 3; do
+            sudo apt-get update -o Acquire::Retries=5 \
+              && sudo apt-get install -y -o Acquire::Retries=5 fonts-dejavu-core fonts-dejavu-extra \
+              && break
+            [ "$i" = 3 ] && exit 1
+            echo "apt failed (attempt $i); retrying in 60 s"; sleep 60
+          done
 
       - name: Backfill thumbnails
         env:
